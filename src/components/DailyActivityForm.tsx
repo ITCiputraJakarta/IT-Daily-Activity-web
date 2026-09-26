@@ -6,6 +6,7 @@ import {
   Plus,
   Trash2,
   Upload,
+  Camera,
   Image as ImageIcon,
   CheckCircle2,
   Calendar,
@@ -17,7 +18,8 @@ import {
   ArrowDown,
   Droplets,
   Activity,
-  Layers
+  Layers,
+  RefreshCw
 } from 'lucide-react';
 
 interface Props {
@@ -39,7 +41,10 @@ export const DailyActivityForm: React.FC<Props> = ({
   onOpenTeamModal,
   onSyncTrafficToChecklist,
 }) => {
-  const fileInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
+  // Separate refs for live camera capture vs gallery picker
+  const cameraInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
+  const galleryInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
+
   const activeMembers = teamMembers.filter((m) => m.isActive);
 
   const updateField = <K extends keyof DailyActivityReport>(
@@ -104,6 +109,8 @@ export const DailyActivityForm: React.FC<Props> = ({
     try {
       const compressed = await compressImage(file, 850, 850, 0.75);
       callback(compressed);
+      // Reset input value so user can take photo again with same file name if needed
+      e.target.value = '';
     } catch (err) {
       console.error('Image compression failed:', err);
     }
@@ -248,7 +255,7 @@ export const DailyActivityForm: React.FC<Props> = ({
                 1. IT Log Book Activity (Aktivitas Harian & Dokumentasi Kasus)
               </h2>
               <p className="text-xs text-slate-500">
-                Pilih User/Client dan PIC via dropdown, sertakan foto/screenshot kasus
+                Upload foto via Kamera Langsung (live foto di HP/tablet) atau pilih dari Galeri
               </p>
             </div>
           </div>
@@ -386,7 +393,7 @@ export const DailyActivityForm: React.FC<Props> = ({
                 </div>
               </div>
 
-              {/* Photo Upload Box */}
+              {/* Photo Upload Box with Dedicated Camera & Gallery Buttons */}
               <div className="bg-white p-3 rounded-xl border border-slate-200">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
@@ -411,43 +418,102 @@ export const DailyActivityForm: React.FC<Props> = ({
                       alt="Dokumentasi Kasus"
                       className="h-28 w-44 object-contain bg-slate-100 rounded-lg border border-slate-200 shadow-xs"
                     />
-                    <div className="text-xs text-slate-600 space-y-1">
-                      <p className="text-emerald-700 font-bold flex items-center gap-1">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        Foto Dokumentasi Terlampir
-                      </p>
-                      <p className="text-[11px] text-slate-500">
-                        Foto otomatis dikompres ke ukuran ringan agar tidak memenuhi storage Firestore.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => fileInputRefs.current[`act-${index}`]?.click()}
-                        className="text-xs text-blue-600 hover:underline font-semibold inline-block pt-1"
-                      >
-                        Ganti Foto Ini
-                      </button>
+                    <div className="text-xs text-slate-600 space-y-2">
+                      <div>
+                        <p className="text-emerald-700 font-bold flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          Foto Dokumentasi Terlampir
+                        </p>
+                        <p className="text-[11px] text-slate-500">
+                          Siap dicetak di lembar A4.
+                        </p>
+                      </div>
+
+                      {/* Change options: Camera or Gallery */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => cameraInputRefs.current[`act-${index}`]?.click()}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold transition shadow-2xs"
+                        >
+                          <Camera className="w-3.5 h-3.5 text-amber-300" />
+                          Foto Ulang (Kamera)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => galleryInputRefs.current[`act-${index}`]?.click()}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-lg text-xs font-semibold transition"
+                        >
+                          <Upload className="w-3.5 h-3.5 text-blue-600" />
+                          Ganti dari Galeri
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ) : (
-                  <div
-                    onClick={() => fileInputRefs.current[`act-${index}`]?.click()}
-                    className="border border-dashed border-slate-300 hover:border-emerald-600 rounded-xl p-3.5 text-center cursor-pointer transition bg-slate-50 hover:bg-emerald-50/30"
-                  >
-                    <Upload className="w-5 h-5 mx-auto text-slate-400 mb-1" />
-                    <span className="text-xs text-slate-700 font-bold block">
-                      Klik untuk upload foto dokumentasi / kamera
-                    </span>
-                    <span className="text-[10px] text-slate-400">
-                      Format PNG, JPG, WebP (kompresi otomatis siap A4)
-                    </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {/* Live Camera Button (Direct to Phone / Tablet Camera) */}
+                    <button
+                      type="button"
+                      onClick={() => cameraInputRefs.current[`act-${index}`]?.click()}
+                      className="flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-dashed border-emerald-400 bg-emerald-50/70 hover:bg-emerald-100 text-emerald-950 transition font-bold text-xs shadow-2xs cursor-pointer"
+                    >
+                      <div className="w-7 h-7 rounded-full bg-emerald-700 text-white flex items-center justify-center shrink-0">
+                        <Camera className="w-4 h-4" />
+                      </div>
+                      <div className="text-left">
+                        <span className="block font-bold text-xs text-emerald-950">
+                          Buka Kamera (Foto Langsung)
+                        </span>
+                        <span className="block text-[10px] text-emerald-800 font-normal">
+                          Live foto via kamera HP / Tablet
+                        </span>
+                      </div>
+                    </button>
+
+                    {/* Gallery / File Button */}
+                    <button
+                      type="button"
+                      onClick={() => galleryInputRefs.current[`act-${index}`]?.click()}
+                      className="flex items-center justify-center gap-2 p-3 rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-800 transition font-bold text-xs shadow-2xs cursor-pointer"
+                    >
+                      <div className="w-7 h-7 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center shrink-0">
+                        <Upload className="w-4 h-4 text-blue-600" />
+                      </div>
+                      <div className="text-left">
+                        <span className="block font-bold text-xs text-slate-900">
+                          Pilih dari Galeri / File
+                        </span>
+                        <span className="block text-[10px] text-slate-500 font-normal">
+                          Upload file foto yang tersimpan
+                        </span>
+                      </div>
+                    </button>
                   </div>
                 )}
 
+                {/* Hidden input for Camera: capture="environment" */}
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  ref={(el) => {
+                    cameraInputRefs.current[`act-${index}`] = el;
+                  }}
+                  onChange={(e) =>
+                    handleImageUpload(e, (dataUrl) =>
+                      updateLogBookItem(index, { pictureUrl: dataUrl })
+                    )
+                  }
+                  className="hidden"
+                />
+
+                {/* Hidden input for Gallery / Storage File Picker */}
                 <input
                   type="file"
                   accept="image/*"
                   ref={(el) => {
-                    fileInputRefs.current[`act-${index}`] = el;
+                    galleryInputRefs.current[`act-${index}`] = el;
                   }}
                   onChange={(e) =>
                     handleImageUpload(e, (dataUrl) =>
@@ -511,22 +577,49 @@ export const DailyActivityForm: React.FC<Props> = ({
                 </button>
               </div>
             ) : (
-              <div
-                onClick={() => fileInputRefs.current['sara']?.click()}
-                className="border border-dashed border-slate-300 hover:border-emerald-600 rounded-xl p-6 text-center cursor-pointer bg-slate-50 transition"
-              >
-                <Upload className="w-6 h-6 mx-auto text-slate-400 mb-1" />
-                <span className="text-xs text-slate-700 font-bold block">
-                  Upload Screenshot SARA
-                </span>
-                <span className="text-[10px] text-slate-400">Klik untuk memilih file</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => cameraInputRefs.current['sara']?.click()}
+                  className="flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-dashed border-emerald-400 bg-emerald-50/70 hover:bg-emerald-100 text-emerald-950 transition font-bold text-xs cursor-pointer"
+                >
+                  <Camera className="w-4 h-4 text-emerald-700" />
+                  <span>Kamera Live</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => galleryInputRefs.current['sara']?.click()}
+                  className="flex items-center justify-center gap-2 p-3 rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-800 transition font-bold text-xs cursor-pointer"
+                >
+                  <Upload className="w-4 h-4 text-blue-600" />
+                  <span>Galeri / File</span>
+                </button>
               </div>
             )}
+            {/* Hidden camera input */}
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              ref={(el) => {
+                cameraInputRefs.current['sara'] = el;
+              }}
+              onChange={(e) =>
+                handleImageUpload(e, (dataUrl) =>
+                  updateField('saraActivity', {
+                    ...report.saraActivity,
+                    screenshotUrl: dataUrl,
+                  })
+                )
+              }
+              className="hidden"
+            />
+            {/* Hidden gallery input */}
             <input
               type="file"
               accept="image/*"
               ref={(el) => {
-                fileInputRefs.current['sara'] = el;
+                galleryInputRefs.current['sara'] = el;
               }}
               onChange={(e) =>
                 handleImageUpload(e, (dataUrl) =>
@@ -603,22 +696,49 @@ export const DailyActivityForm: React.FC<Props> = ({
                 </button>
               </div>
             ) : (
-              <div
-                onClick={() => fileInputRefs.current['traffic']?.click()}
-                className="border border-dashed border-slate-300 hover:border-emerald-600 rounded-xl p-6 text-center cursor-pointer bg-slate-50 transition"
-              >
-                <Upload className="w-6 h-6 mx-auto text-slate-400 mb-1" />
-                <span className="text-xs text-slate-700 font-bold block">
-                  Upload Grafik Trafik Internet
-                </span>
-                <span className="text-[10px] text-slate-400">Klik untuk upload grafik MRTG</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => cameraInputRefs.current['traffic']?.click()}
+                  className="flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-dashed border-emerald-400 bg-emerald-50/70 hover:bg-emerald-100 text-emerald-950 transition font-bold text-xs cursor-pointer"
+                >
+                  <Camera className="w-4 h-4 text-emerald-700" />
+                  <span>Kamera Live</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => galleryInputRefs.current['traffic']?.click()}
+                  className="flex items-center justify-center gap-2 p-3 rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-800 transition font-bold text-xs cursor-pointer"
+                >
+                  <Upload className="w-4 h-4 text-blue-600" />
+                  <span>Galeri / File Grafik</span>
+                </button>
               </div>
             )}
+            {/* Hidden camera input */}
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              ref={(el) => {
+                cameraInputRefs.current['traffic'] = el;
+              }}
+              onChange={(e) =>
+                handleImageUpload(e, (dataUrl) =>
+                  updateField('internetTraffic', {
+                    ...report.internetTraffic,
+                    screenshotUrl: dataUrl,
+                  })
+                )
+              }
+              className="hidden"
+            />
+            {/* Hidden gallery input */}
             <input
               type="file"
               accept="image/*"
               ref={(el) => {
-                fileInputRefs.current['traffic'] = el;
+                galleryInputRefs.current['traffic'] = el;
               }}
               onChange={(e) =>
                 handleImageUpload(e, (dataUrl) =>
@@ -632,7 +752,7 @@ export const DailyActivityForm: React.FC<Props> = ({
             />
           </div>
 
-          {/* IN TRAFFIC INPUTS ONLY (User requested: isin max in avr curent bagian in saja dan itu conect jika di isi muncul di daily cehklist nomor 2 ki remark) */}
+          {/* IN TRAFFIC INPUTS ONLY */}
           <div className="p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-xl">
             <div className="text-xs font-bold text-emerald-950 mb-2 flex items-center justify-between">
               <span>Input Nilai Trafik IN (Download):</span>
@@ -700,7 +820,7 @@ export const DailyActivityForm: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Section 4: Server Temperature (NUMERIC ONLY: USER JUST ENTERS 17 & 45) */}
+      {/* Section 4: Server Temperature (LIVE CAMERA + GALLERY) */}
       <div className="bg-white rounded-xl shadow-xs border border-slate-200 p-4 md:p-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 mb-4 border-b border-slate-100 gap-2">
           <div className="flex items-center gap-2">
@@ -710,7 +830,7 @@ export const DailyActivityForm: React.FC<Props> = ({
                 4. Server Temperature (Suhu & Kelembapan Ruang Server)
               </h2>
               <p className="text-xs text-slate-500">
-                Cukup isi angka saja (misal: 17 dan 41). Satuan °C dan % otomatis terpasang.
+                Foto layar ThermoPro langsung dengan kamera atau upload dari galeri
               </p>
             </div>
           </div>
@@ -740,36 +860,79 @@ export const DailyActivityForm: React.FC<Props> = ({
                   alt="Server Temperature"
                   className="w-full h-36 object-contain"
                 />
-                <button
-                  type="button"
-                  onClick={() =>
-                    updateField('serverTemperature', {
-                      ...report.serverTemperature,
-                      photoUrl: '',
-                    })
-                  }
-                  className="absolute top-2 right-2 px-2 py-0.5 bg-red-600 text-white text-[10px] rounded shadow-xs font-semibold"
-                >
-                  Hapus
-                </button>
+                <div className="flex items-center gap-1.5 absolute top-2 right-2">
+                  <button
+                    type="button"
+                    onClick={() => cameraInputRefs.current['temp']?.click()}
+                    className="px-2 py-0.5 bg-slate-800 text-white text-[10px] rounded shadow-xs font-semibold flex items-center gap-1"
+                  >
+                    <Camera className="w-3 h-3 text-amber-300" />
+                    Foto Ulang
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateField('serverTemperature', {
+                        ...report.serverTemperature,
+                        photoUrl: '',
+                      })
+                    }
+                    className="px-2 py-0.5 bg-red-600 text-white text-[10px] rounded shadow-xs font-semibold"
+                  >
+                    Hapus
+                  </button>
+                </div>
               </div>
             ) : (
-              <div
-                onClick={() => fileInputRefs.current['temp']?.click()}
-                className="border border-dashed border-slate-300 hover:border-emerald-600 rounded-xl p-6 text-center cursor-pointer bg-slate-50 transition"
-              >
-                <Upload className="w-6 h-6 mx-auto text-slate-400 mb-1" />
-                <span className="text-xs text-slate-700 font-bold block">
-                  Upload Foto Termometer Server
-                </span>
-                <span className="text-[10px] text-slate-400">Foto layar ThermoPro</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => cameraInputRefs.current['temp']?.click()}
+                  className="flex items-center justify-center gap-2 p-3.5 rounded-xl border-2 border-dashed border-emerald-400 bg-emerald-50/70 hover:bg-emerald-100 text-emerald-950 transition font-bold text-xs cursor-pointer shadow-2xs"
+                >
+                  <Camera className="w-4 h-4 text-emerald-700" />
+                  <div className="text-left">
+                    <span className="block font-bold">Kamera Langsung</span>
+                    <span className="block text-[10px] text-emerald-800 font-normal">Foto layar ThermoPro</span>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => galleryInputRefs.current['temp']?.click()}
+                  className="flex items-center justify-center gap-2 p-3.5 rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-800 transition font-bold text-xs cursor-pointer shadow-2xs"
+                >
+                  <Upload className="w-4 h-4 text-blue-600" />
+                  <div className="text-left">
+                    <span className="block font-bold">Dari Galeri</span>
+                    <span className="block text-[10px] text-slate-500 font-normal">Pilih file foto</span>
+                  </div>
+                </button>
               </div>
             )}
+            {/* Hidden camera input for server temp */}
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              ref={(el) => {
+                cameraInputRefs.current['temp'] = el;
+              }}
+              onChange={(e) =>
+                handleImageUpload(e, (dataUrl) =>
+                  updateField('serverTemperature', {
+                    ...report.serverTemperature,
+                    photoUrl: dataUrl,
+                  })
+                )
+              }
+              className="hidden"
+            />
+            {/* Hidden gallery input for server temp */}
             <input
               type="file"
               accept="image/*"
               ref={(el) => {
-                fileInputRefs.current['temp'] = el;
+                galleryInputRefs.current['temp'] = el;
               }}
               onChange={(e) =>
                 handleImageUpload(e, (dataUrl) =>
