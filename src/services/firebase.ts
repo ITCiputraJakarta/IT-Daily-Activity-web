@@ -16,12 +16,12 @@ import {
 import { DailyActivityReport, DailyChecklistReport } from '../types';
 
 export const firebaseConfig = {
-  apiKey: "AIzaSyCBuEIu1ITK40brP7SCWKQOQBdaMDFQx6M",
-  authDomain: "daily-ctivity-itbg.firebaseapp.com",
-  projectId: "daily-ctivity-itbg",
-  storageBucket: "daily-ctivity-itbg.firebasestorage.app",
-  messagingSenderId: "927845263252",
-  appId: "1:927845263252:web:92522c80b69caf611a1181"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyCBuEIu1ITK40brP7SCWKQOQBdaMDFQx6M",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "daily-ctivity-itbg.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "daily-ctivity-itbg",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "daily-ctivity-itbg.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "927845263252",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:927845263252:web:92522c80b69caf611a1181"
 };
 
 // Initialize Firebase App safely
