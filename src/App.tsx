@@ -88,11 +88,103 @@ export default function App() {
     setTimeout(() => setNotification(null), 3500);
   }, []);
 
-  // Update team members and save to local storage
-  const handleUpdateTeamMembers = (updated: TeamMember[]) => {
+  // Update team members and save to local storage (with cascading report updates on name edit)
+  const handleUpdateTeamMembers = (
+    updated: TeamMember[],
+    nameChange?: { oldName: string; newName: string }
+  ) => {
     setTeamMembers(updated);
     saveTeamMembersToStorage(updated);
+
+    if (nameChange) {
+      const { oldName, newName } = nameChange;
+
+      // Cascade to active Daily Activity report
+      setActivityReport((prev) => {
+        let changed = false;
+        let newPrep = prev.prepared;
+        if (prev.prepared.trim().toLowerCase() === oldName.trim().toLowerCase()) {
+          newPrep = newName;
+          changed = true;
+        }
+        const newActs = prev.logBookActivities.map((act) => {
+          if (act.pic.trim().toLowerCase() === oldName.trim().toLowerCase()) {
+            changed = true;
+            return { ...act, pic: newName };
+          }
+          return act;
+        });
+        if (changed) {
+          const updatedRep = {
+            ...prev,
+            prepared: newPrep,
+            logBookActivities: newActs,
+          };
+          saveActivityReport(updatedRep).catch(console.error);
+          return updatedRep;
+        }
+        return prev;
+      });
+
+      // Cascade to active Daily Checklist report
+      setChecklistReport((prev) => {
+        let changed = false;
+        let newMorning = prev.morningShiftPic;
+        let newEvening = prev.eveningShiftPic;
+        if (prev.morningShiftPic.trim().toLowerCase() === oldName.trim().toLowerCase()) {
+          newMorning = newName;
+          changed = true;
+        }
+        if (prev.eveningShiftPic.trim().toLowerCase() === oldName.trim().toLowerCase()) {
+          newEvening = newName;
+          changed = true;
+        }
+        const newItems = prev.items.map((it) => {
+          if (it.personIncharge.trim().toLowerCase() === oldName.trim().toLowerCase()) {
+            changed = true;
+            return { ...it, personIncharge: newName };
+          }
+          return it;
+        });
+        if (changed) {
+          const updatedCheck = {
+            ...prev,
+            morningShiftPic: newMorning,
+            eveningShiftPic: newEvening,
+            items: newItems,
+          };
+          saveChecklistReport(updatedCheck).catch(console.error);
+          return updatedCheck;
+        }
+        return prev;
+      });
+
+      setNotification(`Data petugas "${oldName}" diperbarui menjadi "${newName}"`);
+      setTimeout(() => setNotification(null), 3500);
+    }
   };
+
+  // Auto-save immediately to Firestore & Local Storage when image is uploaded or modified
+  const handleAutoSaveActivity = useCallback(async (updated: DailyActivityReport) => {
+    setIsSaving(true);
+    setSaveStatusText('Menyimpan foto ke database...');
+    try {
+      const res = await saveActivityReport(updated);
+      setSaveStatusText(
+        res.isLocalFallback
+          ? '✓ Foto Tersimpan di Cadangan Lokal (Offline)'
+          : '✓ Foto Tersimpan Otomatis di Firestore'
+      );
+      setIsDbOnline(!res.isLocalFallback);
+      setNotification('✓ Gambar baru berhasil disimpan otomatis ke Database!');
+      setTimeout(() => setNotification(null), 3500);
+    } catch (err) {
+      console.error('Auto save image failed:', err);
+      setSaveStatusText('Gagal menyimpan foto');
+    } finally {
+      setIsSaving(false);
+    }
+  }, []);
 
   // Save/Update logo handler with Cloud & Local storage sync
   const handleSaveLogo = (newLogoUrl: string | null) => {
@@ -372,6 +464,7 @@ export default function App() {
                 onSyncTrafficToChecklist={handleSyncTrafficToChecklist}
                 customLogoUrl={customLogoUrl}
                 onOpenLogoModal={() => setIsLogoModalOpen(true)}
+                onAutoSaveActivity={handleAutoSaveActivity}
               />
             ) : (
               <DailyChecklistForm

@@ -33,6 +33,7 @@ interface Props {
   onSyncTrafficToChecklist?: (maxIn: string, avgIn: string, currentIn: string) => void;
   customLogoUrl?: string | null;
   onOpenLogoModal?: () => void;
+  onAutoSaveActivity?: (updated: DailyActivityReport) => void;
 }
 
 export const DailyActivityForm: React.FC<Props> = ({
@@ -45,6 +46,7 @@ export const DailyActivityForm: React.FC<Props> = ({
   onSyncTrafficToChecklist,
   customLogoUrl,
   onOpenLogoModal,
+  onAutoSaveActivity,
 }) => {
   // Separate refs for live camera capture vs gallery picker
   const cameraInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
@@ -60,6 +62,64 @@ export const DailyActivityForm: React.FC<Props> = ({
       ...report,
       [key]: value,
     });
+  };
+
+  // Handlers that update local state AND immediately persist images to Firestore & LocalStorage
+  const handleLogBookImageChange = (index: number, dataUrl: string) => {
+    const updatedActs = [...report.logBookActivities];
+    if (index >= 0 && index < updatedActs.length) {
+      updatedActs[index] = { ...updatedActs[index], pictureUrl: dataUrl };
+      const updatedReport = {
+        ...report,
+        logBookActivities: updatedActs,
+      };
+      onChange(updatedReport);
+      if (onAutoSaveActivity) {
+        onAutoSaveActivity(updatedReport);
+      }
+    }
+  };
+
+  const handleSaraImageChange = (dataUrl: string) => {
+    const updatedReport = {
+      ...report,
+      saraActivity: {
+        ...report.saraActivity,
+        screenshotUrl: dataUrl,
+      },
+    };
+    onChange(updatedReport);
+    if (onAutoSaveActivity) {
+      onAutoSaveActivity(updatedReport);
+    }
+  };
+
+  const handleTrafficImageChange = (dataUrl: string) => {
+    const updatedReport = {
+      ...report,
+      internetTraffic: {
+        ...report.internetTraffic,
+        screenshotUrl: dataUrl,
+      },
+    };
+    onChange(updatedReport);
+    if (onAutoSaveActivity) {
+      onAutoSaveActivity(updatedReport);
+    }
+  };
+
+  const handleServerTempPhotoChange = (dataUrl: string) => {
+    const updatedReport = {
+      ...report,
+      serverTemperature: {
+        ...report.serverTemperature,
+        photoUrl: dataUrl,
+      },
+    };
+    onChange(updatedReport);
+    if (onAutoSaveActivity) {
+      onAutoSaveActivity(updatedReport);
+    }
   };
 
   const updateLogBookItem = (index: number, partial: Partial<LogBookItem>) => {
@@ -421,7 +481,7 @@ export const DailyActivityForm: React.FC<Props> = ({
                   {act.pictureUrl && (
                     <button
                       type="button"
-                      onClick={() => updateLogBookItem(index, { pictureUrl: '' })}
+                      onClick={() => handleLogBookImageChange(index, '')}
                       className="text-[11px] text-red-600 hover:underline font-semibold"
                     >
                       Hapus Foto
@@ -443,7 +503,7 @@ export const DailyActivityForm: React.FC<Props> = ({
                           Foto Dokumentasi Terlampir
                         </p>
                         <p className="text-[11px] text-slate-500">
-                          Siap dicetak di lembar A4.
+                          Siap dicetak di lembar A4 & otomatis tersimpan ke cloud.
                         </p>
                       </div>
 
@@ -520,7 +580,7 @@ export const DailyActivityForm: React.FC<Props> = ({
                   }}
                   onChange={(e) =>
                     handleImageUpload(e, (dataUrl) =>
-                      updateLogBookItem(index, { pictureUrl: dataUrl })
+                      handleLogBookImageChange(index, dataUrl)
                     )
                   }
                   className="hidden"
@@ -535,7 +595,7 @@ export const DailyActivityForm: React.FC<Props> = ({
                   }}
                   onChange={(e) =>
                     handleImageUpload(e, (dataUrl) =>
-                      updateLogBookItem(index, { pictureUrl: dataUrl })
+                      handleLogBookImageChange(index, dataUrl)
                     )
                   }
                   className="hidden"
@@ -586,9 +646,7 @@ export const DailyActivityForm: React.FC<Props> = ({
                 />
                 <button
                   type="button"
-                  onClick={() =>
-                    updateField('saraActivity', { ...report.saraActivity, screenshotUrl: '' })
-                  }
+                  onClick={() => handleSaraImageChange('')}
                   className="absolute top-2 right-2 px-2 py-0.5 bg-red-600 text-white text-[10px] rounded shadow-xs font-semibold"
                 >
                   Hapus
@@ -624,10 +682,7 @@ export const DailyActivityForm: React.FC<Props> = ({
               }}
               onChange={(e) =>
                 handleImageUpload(e, (dataUrl) =>
-                  updateField('saraActivity', {
-                    ...report.saraActivity,
-                    screenshotUrl: dataUrl,
-                  })
+                  handleSaraImageChange(dataUrl)
                 )
               }
               className="hidden"
@@ -641,10 +696,7 @@ export const DailyActivityForm: React.FC<Props> = ({
               }}
               onChange={(e) =>
                 handleImageUpload(e, (dataUrl) =>
-                  updateField('saraActivity', {
-                    ...report.saraActivity,
-                    screenshotUrl: dataUrl,
-                  })
+                  handleSaraImageChange(dataUrl)
                 )
               }
               className="hidden"
@@ -702,12 +754,7 @@ export const DailyActivityForm: React.FC<Props> = ({
                 />
                 <button
                   type="button"
-                  onClick={() =>
-                    updateField('internetTraffic', {
-                      ...report.internetTraffic,
-                      screenshotUrl: '',
-                    })
-                  }
+                  onClick={() => handleTrafficImageChange('')}
                   className="absolute top-2 right-2 px-2 py-0.5 bg-red-600 text-white text-[10px] rounded shadow-xs font-semibold"
                 >
                   Hapus
@@ -743,10 +790,7 @@ export const DailyActivityForm: React.FC<Props> = ({
               }}
               onChange={(e) =>
                 handleImageUpload(e, (dataUrl) =>
-                  updateField('internetTraffic', {
-                    ...report.internetTraffic,
-                    screenshotUrl: dataUrl,
-                  })
+                  handleTrafficImageChange(dataUrl)
                 )
               }
               className="hidden"
@@ -760,10 +804,7 @@ export const DailyActivityForm: React.FC<Props> = ({
               }}
               onChange={(e) =>
                 handleImageUpload(e, (dataUrl) =>
-                  updateField('internetTraffic', {
-                    ...report.internetTraffic,
-                    screenshotUrl: dataUrl,
-                  })
+                  handleTrafficImageChange(dataUrl)
                 )
               }
               className="hidden"
@@ -889,12 +930,7 @@ export const DailyActivityForm: React.FC<Props> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() =>
-                      updateField('serverTemperature', {
-                        ...report.serverTemperature,
-                        photoUrl: '',
-                      })
-                    }
+                    onClick={() => handleServerTempPhotoChange('')}
                     className="px-2 py-0.5 bg-red-600 text-white text-[10px] rounded shadow-xs font-semibold"
                   >
                     Hapus
@@ -937,10 +973,7 @@ export const DailyActivityForm: React.FC<Props> = ({
               }}
               onChange={(e) =>
                 handleImageUpload(e, (dataUrl) =>
-                  updateField('serverTemperature', {
-                    ...report.serverTemperature,
-                    photoUrl: dataUrl,
-                  })
+                  handleServerTempPhotoChange(dataUrl)
                 )
               }
               className="hidden"
@@ -954,10 +987,7 @@ export const DailyActivityForm: React.FC<Props> = ({
               }}
               onChange={(e) =>
                 handleImageUpload(e, (dataUrl) =>
-                  updateField('serverTemperature', {
-                    ...report.serverTemperature,
-                    photoUrl: dataUrl,
-                  })
+                  handleServerTempPhotoChange(dataUrl)
                 )
               }
               className="hidden"
