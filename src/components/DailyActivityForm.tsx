@@ -2,6 +2,7 @@ import React, { useRef } from 'react';
 import { DailyActivityReport, LogBookItem, TeamMember } from '../types';
 import { CLIENT_DEPARTMENTS } from '../data/teamMembers';
 import { compressImage } from '../utils/imageUtils';
+import { CiputraLogo } from './CiputraLogo';
 import {
   Plus,
   Trash2,
@@ -30,6 +31,8 @@ interface Props {
   teamMembers: TeamMember[];
   onOpenTeamModal: () => void;
   onSyncTrafficToChecklist?: (maxIn: string, avgIn: string, currentIn: string) => void;
+  customLogoUrl?: string | null;
+  onOpenLogoModal?: () => void;
 }
 
 export const DailyActivityForm: React.FC<Props> = ({
@@ -40,6 +43,8 @@ export const DailyActivityForm: React.FC<Props> = ({
   teamMembers,
   onOpenTeamModal,
   onSyncTrafficToChecklist,
+  customLogoUrl,
+  onOpenLogoModal,
 }) => {
   // Separate refs for live camera capture vs gallery picker
   const cameraInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
@@ -146,14 +151,27 @@ export const DailyActivityForm: React.FC<Props> = ({
       {/* Header Info Card */}
       <div className="bg-white rounded-xl shadow-xs border border-slate-200 p-4 md:p-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 mb-4 border-b border-slate-100 gap-3">
-          <div className="flex items-center gap-2">
-            <Building className="w-5 h-5 text-emerald-700" />
+          <div className="flex items-center gap-3">
+            <div className="h-11 w-24 sm:w-28 flex items-center justify-center p-1 bg-slate-50 border border-slate-200 rounded-lg shrink-0">
+              <CiputraLogo size="sm" customLogoUrl={customLogoUrl} />
+            </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900">
-                Informasi Laporan & Header Dokumen
-              </h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-bold text-slate-900">
+                  Informasi Laporan & Header Dokumen
+                </h2>
+                {onOpenLogoModal && (
+                  <button
+                    type="button"
+                    onClick={onOpenLogoModal}
+                    className="text-[11px] text-emerald-700 hover:text-emerald-800 font-bold hover:underline"
+                  >
+                    (Ganti Logo)
+                  </button>
+                )}
+              </div>
               <p className="text-xs text-slate-500">
-                Data kop surat untuk IT Daily Activity Report format A4
+                Logo di samping akan dicetak pada kop surat A4 IT Daily Activity Report
               </p>
             </div>
           </div>

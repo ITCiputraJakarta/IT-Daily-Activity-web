@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface LogoProps {
   className?: string;
@@ -13,20 +13,27 @@ export const CiputraLogo: React.FC<LogoProps> = ({
   customLogoUrl,
   altText = 'Hotel Ciputra Jakarta'
 }) => {
+  const [imgError, setImgError] = useState(false);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [customLogoUrl]);
+
   const sizeClasses = {
     sm: 'h-10 max-h-10',
     md: 'h-14 max-h-14',
     lg: 'h-20 max-h-20',
   };
 
-  // If user uploaded a custom logo, render it crisply
-  if (customLogoUrl) {
+  // If user uploaded a custom logo and it loads without error, render it crisply
+  if (customLogoUrl && !imgError) {
     return (
-      <div className={`flex items-center justify-center select-none ${className}`}>
+      <div className={`flex select-none ${className || 'items-center justify-center'}`}>
         <img
           src={customLogoUrl}
           alt={altText}
-          className={`${sizeClasses[size]} w-auto max-w-[170px] object-contain`}
+          onError={() => setImgError(true)}
+          className={`${sizeClasses[size]} w-auto max-w-[180px] object-contain block`}
         />
       </div>
     );
@@ -34,7 +41,7 @@ export const CiputraLogo: React.FC<LogoProps> = ({
 
   // Default: Hotel Ciputra Jakarta official SVG vector insignia
   return (
-    <div className={`flex flex-col items-center select-none ${className}`}>
+    <div className={`flex flex-col select-none ${className || 'items-center'}`}>
       <svg
         viewBox="0 0 160 70"
         className={`${sizeClasses[size]} w-auto object-contain`}

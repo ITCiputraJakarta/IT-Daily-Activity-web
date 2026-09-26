@@ -260,3 +260,40 @@ export async function getSavedReportDates(): Promise<{ activityDates: string[]; 
     checklistDates: Array.from(checklistDates).sort().reverse(),
   };
 }
+
+/**
+ * Save custom logo to Firestore so all devices/users share the exact same branding
+ */
+export async function saveAppLogoToCloud(logoUrl: string | null): Promise<void> {
+  try {
+    const logoDocRef = doc(db, 'app_settings', 'company_logo');
+    await setDoc(
+      logoDocRef,
+      {
+        logoUrl: logoUrl || '',
+        updatedAt: Date.now(),
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.warn('Could not save logo to Firestore:', err);
+  }
+}
+
+/**
+ * Load custom logo from Firestore
+ */
+export async function loadAppLogoFromCloud(): Promise<string | null> {
+  try {
+    const logoDocRef = doc(db, 'app_settings', 'company_logo');
+    const snap = await getDoc(logoDocRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      return data?.logoUrl || null;
+    }
+  } catch (err) {
+    console.warn('Could not load logo from Firestore:', err);
+  }
+  return null;
+}
+

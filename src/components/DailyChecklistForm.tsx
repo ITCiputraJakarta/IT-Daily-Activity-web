@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { DailyChecklistReport, ChecklistItem, TeamMember } from '../types';
 import { DEFAULT_CHECKLIST_ITEMS } from '../data/defaults';
+import { CiputraLogo } from './CiputraLogo';
 import {
   CheckCircle2,
   Clock,
@@ -23,6 +24,8 @@ interface Props {
   isSaving: boolean;
   teamMembers: TeamMember[];
   onOpenTeamModal: () => void;
+  customLogoUrl?: string | null;
+  onOpenLogoModal?: () => void;
 }
 
 export const DailyChecklistForm: React.FC<Props> = ({
@@ -32,6 +35,8 @@ export const DailyChecklistForm: React.FC<Props> = ({
   isSaving,
   teamMembers,
   onOpenTeamModal,
+  customLogoUrl,
+  onOpenLogoModal,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const activeMembers = teamMembers.filter((m) => m.isActive);
@@ -168,18 +173,32 @@ export const DailyChecklistForm: React.FC<Props> = ({
       {/* Header Info & Shift Card */}
       <div className="bg-white rounded-xl shadow-xs border border-slate-200 p-4 md:p-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 mb-4 border-b border-slate-100 gap-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-base font-bold text-slate-900">
-                Shift Petugas & Informasi Checklist
-              </h2>
-              <span className="text-xs bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded-full">
-                31 Task Standar
-              </span>
+          <div className="flex items-center gap-3">
+            <div className="h-11 w-24 sm:w-28 flex items-center justify-center p-1 bg-slate-50 border border-slate-200 rounded-lg shrink-0">
+              <CiputraLogo size="sm" customLogoUrl={customLogoUrl} />
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Pilih nama petugas shift dari dropdown. Hanya nama berstatus <strong>Aktif</strong> yang muncul.
-            </p>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-bold text-slate-900">
+                  Shift Petugas & Informasi Checklist
+                </h2>
+                <span className="text-xs bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded-full">
+                  31 Task Standar
+                </span>
+                {onOpenLogoModal && (
+                  <button
+                    type="button"
+                    onClick={onOpenLogoModal}
+                    className="text-[11px] text-emerald-700 hover:text-emerald-800 font-bold hover:underline ml-1"
+                  >
+                    (Ganti Logo)
+                  </button>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Logo di samping akan dicetak pada header IT Daily Checklist A4.
+              </p>
+            </div>
           </div>
 
           <div className="flex items-center gap-2 self-start sm:self-auto">

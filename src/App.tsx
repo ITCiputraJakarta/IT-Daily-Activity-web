@@ -23,7 +23,9 @@ import {
   saveChecklistReport,
   loadChecklistReport,
   runAutoCleanupExpiredRecords,
-  checkFirestoreConnection
+  checkFirestoreConnection,
+  saveAppLogoToCloud,
+  loadAppLogoFromCloud
 } from './services/firebase';
 import { exportElementsToA4Pdf, triggerNativePrint } from './utils/pdfExport';
 import { formatReportDate, getTodayDateString } from './utils/imageUtils';
@@ -49,7 +51,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'activity' | 'checklist'>('activity');
   const [viewMode, setViewMode] = useState<'edit' | 'preview'>('edit');
 
-  // Custom Logo state
+  // Custom Logo state (cached locally and synced with Cloud Firestore)
   const [customLogoUrl, setCustomLogoUrl] = useState<string | null>(() => getCustomLogo());
   const [isLogoModalOpen, setIsLogoModalOpen] = useState<boolean>(false);
 
@@ -92,23 +94,33 @@ export default function App() {
     saveTeamMembersToStorage(updated);
   };
 
-  // Save/Update logo handler
+  // Save/Update logo handler with Cloud & Local storage sync
   const handleSaveLogo = (newLogoUrl: string | null) => {
     if (newLogoUrl) {
       saveCustomLogo(newLogoUrl);
+      saveAppLogoToCloud(newLogoUrl);
       setCustomLogoUrl(newLogoUrl);
-      setNotification('Logo kustom berhasil diterapkan pada seluruh laporan & cetak.');
+      setNotification('Logo kustom berhasil diterapkan di form, preview, dan cetak PDF.');
     } else {
       removeCustomLogo();
+      saveAppLogoToCloud(null);
       setCustomLogoUrl(null);
       setNotification('Logo dikembalikan ke default Hotel Ciputra Jakarta.');
     }
     setTimeout(() => setNotification(null), 3500);
   };
 
-  // Run connection check and auto-cleanup on mount
+  // Run connection check, load cloud logo, and auto-cleanup on mount
   useEffect(() => {
     handleCheckDbConnection();
+
+    // Check if cloud has a synced logo
+    loadAppLogoFromCloud().then((cloudLogo) => {
+      if (cloudLogo) {
+        setCustomLogoUrl(cloudLogo);
+        saveCustomLogo(cloudLogo);
+      }
+    });
 
     runAutoCleanupExpiredRecords().then((res) => {
       const total = res.deletedActivities + res.deletedChecklists;
@@ -358,6 +370,8 @@ export default function App() {
                 teamMembers={teamMembers}
                 onOpenTeamModal={() => setIsTeamModalOpen(true)}
                 onSyncTrafficToChecklist={handleSyncTrafficToChecklist}
+                customLogoUrl={customLogoUrl}
+                onOpenLogoModal={() => setIsLogoModalOpen(true)}
               />
             ) : (
               <DailyChecklistForm
@@ -367,6 +381,8 @@ export default function App() {
                 isSaving={isSaving}
                 teamMembers={teamMembers}
                 onOpenTeamModal={() => setIsTeamModalOpen(true)}
+                customLogoUrl={customLogoUrl}
+                onOpenLogoModal={() => setIsLogoModalOpen(true)}
               />
             )}
           </div>

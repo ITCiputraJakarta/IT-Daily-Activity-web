@@ -34,6 +34,26 @@ export async function exportElementsToA4Pdf(
       );
     }
 
+    // Crucial: Wait for all images in element (custom logo, evidence photos, MRTG graphs) to be fully loaded & decoded
+    const images = Array.from(el.querySelectorAll('img'));
+    if (images.length > 0) {
+      await Promise.all(
+        images.map((img) => {
+          if (img.complete && img.naturalWidth > 0) {
+            return Promise.resolve();
+          }
+          return new Promise<void>((resolve) => {
+            img.onload = () => resolve();
+            img.onerror = () => resolve();
+            setTimeout(resolve, 2500); // 2.5s fallback timeout
+          });
+        })
+      );
+    }
+
+    // Brief 80ms tick to ensure browser layout & rendering pipeline is settled
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
     if (i > 0) {
       pdf.addPage('a4', 'portrait');
     }
