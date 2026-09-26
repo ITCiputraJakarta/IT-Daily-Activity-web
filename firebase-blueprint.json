@@ -1,0 +1,49 @@
+{
+  "entities": {
+    "DailyActivityReport": {
+      "title": "Daily Activity Report",
+      "description": "Daily IT activity log with photos and operational documentation",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string" },
+        "formattedDate": { "type": "string" },
+        "propertyName": { "type": "string" },
+        "prepared": { "type": "string" },
+        "directReport": { "type": "string" },
+        "cc": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" },
+        "expiresAt": { "type": "number" }
+      },
+      "required": ["date", "propertyName", "createdAt"]
+    },
+    "DailyChecklistReport": {
+      "title": "Daily Checklist Report",
+      "description": "Daily 31-task checklist for Morning and Evening shift IT operations",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string" },
+        "formattedDate": { "type": "string" },
+        "propertyName": { "type": "string" },
+        "morningShiftPic": { "type": "string" },
+        "eveningShiftPic": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" },
+        "expiresAt": { "type": "number" }
+      },
+      "required": ["date", "propertyName", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/daily_activities/{date}": {
+      "schema": "DailyActivityReport",
+      "description": "Stores daily IT activity reports"
+    },
+    "/daily_checklists/{date}": {
+      "schema": "DailyChecklistReport",
+      "description": "Stores daily IT 31-task checklist reports"
+    }
+  }
+}
