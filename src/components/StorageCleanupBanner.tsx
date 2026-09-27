@@ -25,8 +25,8 @@ export const StorageCleanupBanner: React.FC<Props> = ({ onNotify }) => {
       if (onNotify) {
         onNotify(
           total > 0
-            ? `Pembersihan berhasil: ${total} dokumen lama (>30 hari) telah dihapus.`
-            : 'Pemeriksaan selesai: Tidak ada data kadaluarsa lebih dari 30 hari.'
+            ? `Pembersihan berhasil: ${total} dokumen lama (>2 bulan) telah dihapus.`
+            : 'Pemeriksaan selesai: Tidak ada data kadaluarsa lebih dari 2 bulan.'
         );
       }
     } catch (e) {
@@ -54,7 +54,7 @@ export const StorageCleanupBanner: React.FC<Props> = ({ onNotify }) => {
               </span>
             </div>
             <p className="text-xs text-emerald-100/80 mt-0.5">
-              Kebijakan Retensi Aktif: Data teks & foto bertahan <strong>1 bulan (30 hari)</strong>. Sistem secara otomatis membersihkan rekaman lama untuk menghemat kapasitas storage.
+              Kebijakan Retensi Aktif: Data teks & foto bertahan <strong>2 bulan (60 hari)</strong> dari tanggal aktif. Sistem secara otomatis membersihkan rekaman yang lebih dari 60 hari untuk menghemat kapasitas storage.
             </p>
             {lastCleanupResult && (
               <p className="text-[11px] text-emerald-300 mt-1 flex items-center gap-1">
@@ -72,7 +72,7 @@ export const StorageCleanupBanner: React.FC<Props> = ({ onNotify }) => {
             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 active:bg-emerald-800 text-white rounded-lg text-xs font-semibold transition disabled:opacity-50 shadow-xs"
           >
             <Trash2 className="w-3.5 h-3.5" />
-            {isRunning ? 'Membersihkan...' : 'Bersihkan Data > 30 Hari'}
+            {isRunning ? 'Membersihkan...' : 'Bersihkan Data > 2 Bulan'}
           </button>
         </div>
       </div>

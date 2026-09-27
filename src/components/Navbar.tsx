@@ -1,5 +1,6 @@
 import React from 'react';
 import { CiputraLogo } from './CiputraLogo';
+import { addDaysToDateString, getTodayDateString } from '../utils/imageUtils';
 import {
   FileText,
   CheckSquare,
@@ -15,7 +16,9 @@ import {
   HardDrive,
   Users,
   Wifi,
-  WifiOff
+  WifiOff,
+  Check,
+  RefreshCw
 } from 'lucide-react';
 
 interface Props {
@@ -60,29 +63,15 @@ export const Navbar: React.FC<Props> = ({
   onCheckDb,
 }) => {
   const handlePrevDay = () => {
-    const d = new Date(selectedDate);
-    d.setDate(d.getDate() - 1);
-    const yr = d.getFullYear();
-    const mo = String(d.getMonth() + 1).padStart(2, '0');
-    const da = String(d.getDate()).padStart(2, '0');
-    setSelectedDate(`${yr}-${mo}-${da}`);
+    setSelectedDate(addDaysToDateString(selectedDate, -1));
   };
 
   const handleNextDay = () => {
-    const d = new Date(selectedDate);
-    d.setDate(d.getDate() + 1);
-    const yr = d.getFullYear();
-    const mo = String(d.getMonth() + 1).padStart(2, '0');
-    const da = String(d.getDate()).padStart(2, '0');
-    setSelectedDate(`${yr}-${mo}-${da}`);
+    setSelectedDate(addDaysToDateString(selectedDate, 1));
   };
 
   const handleToday = () => {
-    const d = new Date();
-    const yr = d.getFullYear();
-    const mo = String(d.getMonth() + 1).padStart(2, '0');
-    const da = String(d.getDate()).padStart(2, '0');
-    setSelectedDate(`${yr}-${mo}-${da}`);
+    setSelectedDate(getTodayDateString());
   };
 
   return (
@@ -197,10 +186,15 @@ export const Navbar: React.FC<Props> = ({
             type="button"
             onClick={onSave}
             disabled={isSaving}
+            title="Auto-save aktif. Klik untuk simpan instan sekarang."
             className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition shadow-xs disabled:opacity-50"
           >
-            <Save className="w-3.5 h-3.5" />
-            <span>{isSaving ? '...' : 'Simpan'}</span>
+            {isSaving ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Save className="w-3.5 h-3.5" />
+            )}
+            <span>{isSaving ? 'Menyimpan...' : 'Simpan'}</span>
           </button>
 
           {/* Print button */}
@@ -263,8 +257,19 @@ export const Navbar: React.FC<Props> = ({
           {/* View Mode Toggle: Edit Form vs A4 Preview */}
           <div className="flex items-center justify-between sm:justify-end gap-2.5">
             {saveStatusText && (
-              <span className="text-[11px] text-emerald-800 font-medium truncate max-w-[200px]">
-                {saveStatusText}
+              <span
+                className={`text-[11px] font-semibold px-2 py-0.5 rounded-md flex items-center gap-1 border transition ${
+                  isSaving
+                    ? 'text-blue-700 bg-blue-50 border-blue-200 animate-pulse'
+                    : 'text-emerald-800 bg-emerald-50 border-emerald-200'
+                }`}
+              >
+                {isSaving ? (
+                  <RefreshCw className="w-3 h-3 animate-spin shrink-0 text-blue-600" />
+                ) : (
+                  <Check className="w-3 h-3 shrink-0 text-emerald-600" />
+                )}
+                <span className="truncate max-w-[240px]">{saveStatusText}</span>
               </span>
             )}
 

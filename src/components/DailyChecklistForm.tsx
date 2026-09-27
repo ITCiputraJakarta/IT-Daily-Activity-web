@@ -96,10 +96,15 @@ export const DailyChecklistForm: React.FC<Props> = ({
   const resetToDefaultTemplate = () => {
     if (
       window.confirm(
-        'Kembalikan checklist ke 31 item standar Hotel Ciputra Jakarta? Data editan akan diganti.'
+        'Buka lembar kerja checklist baru yang bersih untuk hari ini?\n• 31 Task standar Hotel Ciputra Jakarta\n• Status Checked, remark bersih\n• Pilihan Morning & Evening Shift dikosongkan'
       )
     ) {
-      updateField('items', JSON.parse(JSON.stringify(DEFAULT_CHECKLIST_ITEMS)));
+      onChange({
+        ...report,
+        morningShiftPic: '',
+        eveningShiftPic: '',
+        items: JSON.parse(JSON.stringify(DEFAULT_CHECKLIST_ITEMS)),
+      });
     }
   };
 
@@ -112,48 +117,18 @@ export const DailyChecklistForm: React.FC<Props> = ({
     updateField('items', updated);
   };
 
-  // Cascade shift changes to items assigned to previous officer (single name only)
+  // Dedicated shift changes: only updates the shift PIC without overwriting individual checklist items
   const handleMorningShiftChange = (newPic: string) => {
-    const prevPic = report.morningShiftPic;
-    const updatedItems = report.items.map((item) => {
-      if (
-        prevPic &&
-        item.personIncharge.trim() === prevPic.trim() &&
-        !item.personIncharge.includes('&') &&
-        !item.personIncharge.includes(',') &&
-        !item.personIncharge.includes('/')
-      ) {
-        return { ...item, personIncharge: newPic };
-      }
-      return item;
-    });
-
     onChange({
       ...report,
       morningShiftPic: newPic,
-      items: updatedItems,
     });
   };
 
   const handleEveningShiftChange = (newPic: string) => {
-    const prevPic = report.eveningShiftPic;
-    const updatedItems = report.items.map((item) => {
-      if (
-        prevPic &&
-        item.personIncharge.trim() === prevPic.trim() &&
-        !item.personIncharge.includes('&') &&
-        !item.personIncharge.includes(',') &&
-        !item.personIncharge.includes('/')
-      ) {
-        return { ...item, personIncharge: newPic };
-      }
-      return item;
-    });
-
     onChange({
       ...report,
       eveningShiftPic: newPic,
-      items: updatedItems,
     });
   };
 
@@ -268,14 +243,16 @@ export const DailyChecklistForm: React.FC<Props> = ({
                 onChange={(e) => handleMorningShiftChange(e.target.value)}
                 className="w-full px-2.5 py-2 text-xs md:text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-600 bg-white font-semibold text-slate-800"
               >
+                <option value="">-- Pilih Petugas Morning --</option>
                 {activeMembers.map((m) => (
                   <option key={m.id} value={m.name}>
                     {m.name}
                   </option>
                 ))}
-                {!activeMembers.some((m) => m.name === report.morningShiftPic) && (
-                  <option value={report.morningShiftPic}>{report.morningShiftPic}</option>
-                )}
+                {report.morningShiftPic &&
+                  !activeMembers.some((m) => m.name === report.morningShiftPic) && (
+                    <option value={report.morningShiftPic}>{report.morningShiftPic}</option>
+                  )}
               </select>
             </div>
           </div>
@@ -301,14 +278,16 @@ export const DailyChecklistForm: React.FC<Props> = ({
                 onChange={(e) => handleEveningShiftChange(e.target.value)}
                 className="w-full px-2.5 py-2 text-xs md:text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-600 bg-white font-semibold text-slate-800"
               >
+                <option value="">-- Pilih Petugas Evening --</option>
                 {activeMembers.map((m) => (
                   <option key={m.id} value={m.name}>
                     {m.name}
                   </option>
                 ))}
-                {!activeMembers.some((m) => m.name === report.eveningShiftPic) && (
-                  <option value={report.eveningShiftPic}>{report.eveningShiftPic}</option>
-                )}
+                {report.eveningShiftPic &&
+                  !activeMembers.some((m) => m.name === report.eveningShiftPic) && (
+                    <option value={report.eveningShiftPic}>{report.eveningShiftPic}</option>
+                  )}
               </select>
             </div>
           </div>

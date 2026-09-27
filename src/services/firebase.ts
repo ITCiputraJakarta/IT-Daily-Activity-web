@@ -31,7 +31,8 @@ export const db = getFirestore(app);
 export const COLLECTION_ACTIVITIES = 'daily_activities';
 export const COLLECTION_CHECKLISTS = 'daily_checklists';
 
-export const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+export const TWO_MONTHS_MS = 60 * 24 * 60 * 60 * 1000; // 60 days (2 months) retention policy
+export const THIRTY_DAYS_MS = TWO_MONTHS_MS; // backwards compatibility alias
 
 // LocalStorage keys for fallback/offline
 const LS_PREFIX_ACTIVITY = 'hcj_it_activity_';
@@ -71,7 +72,7 @@ export async function saveActivityReport(report: DailyActivityReport): Promise<{
     ...report,
     updatedAt: now,
     createdAt: report.createdAt || now,
-    expiresAt: report.expiresAt || (now + THIRTY_DAYS_MS),
+    expiresAt: report.expiresAt || (now + TWO_MONTHS_MS),
   };
 
   // Always keep in local storage as instant backup
@@ -126,7 +127,7 @@ export async function saveChecklistReport(report: DailyChecklistReport): Promise
     ...report,
     updatedAt: now,
     createdAt: report.createdAt || now,
-    expiresAt: report.expiresAt || (now + THIRTY_DAYS_MS),
+    expiresAt: report.expiresAt || (now + TWO_MONTHS_MS),
   };
 
   try {
@@ -171,12 +172,12 @@ export async function loadChecklistReport(dateStr: string): Promise<DailyCheckli
 }
 
 /**
- * Automatic cleanup of records older than 30 days
- * Fulfills: "data foto text bertahan 1 bln dan nantinya akan auto delet agar meringankan storage"
+ * Automatic cleanup of records older than 2 months (60 days)
+ * Fulfills: "laporan bertahan selama 2 bulan dari hari ini (today) pada tanggal aktif"
  */
-export async function runAutoCleanupExpiredRecords(): Promise<{ deletedActivities: number; deletedChecklists: number }> {
+export async function runAutoCleanupExpiredRecords(maxAgeMs = TWO_MONTHS_MS): Promise<{ deletedActivities: number; deletedChecklists: number }> {
   const now = Date.now();
-  const cutoffTime = now - THIRTY_DAYS_MS;
+  const cutoffTime = now - maxAgeMs;
   let deletedActivities = 0;
   let deletedChecklists = 0;
 

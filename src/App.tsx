@@ -71,7 +71,7 @@ export default function App() {
 
   const [isDbOnline, setIsDbOnline] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
-  const [saveStatusText, setSaveStatusText] = useState<string>('Tersimpan di Cloud Firebase');
+  const [saveStatusText, setSaveStatusText] = useState<string>('✓ Tersimpan otomatis ke Cloud');
   const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);
   const [pdfProgress, setPdfProgress] = useState<{ progress: number; text: string } | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
@@ -81,6 +81,19 @@ export default function App() {
   const actPage1Ref = useRef<HTMLDivElement | null>(null);
   const actPage2Ref = useRef<HTMLDivElement | null>(null);
   const checklistPageRef = useRef<HTMLDivElement | null>(null);
+
+  // Auto-save refs to track saved state and debounce keystrokes
+  const lastSavedActRef = useRef<string>('');
+  const lastSavedCheckRef = useRef<string>('');
+  const isDateLoadedRef = useRef<string>('');
+  const actDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const checkDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Keep latest reports in refs for instant flush on date switch
+  const latestActRef = useRef<DailyActivityReport>(activityReport);
+  latestActRef.current = activityReport;
+  const latestCheckRef = useRef<DailyChecklistReport>(checklistReport);
+  latestCheckRef.current = checklistReport;
 
   // Test Firebase connection
   const handleCheckDbConnection = useCallback(async () => {
@@ -229,41 +242,123 @@ export default function App() {
       const total = res.deletedActivities + res.deletedChecklists;
       if (total > 0) {
         setNotification(
-          `Auto-cleanup storage: ${total} data lama (>30 hari) berhasil dibersihkan otomatis.`
+          `Auto-cleanup storage: ${total} data lama (>2 bulan) berhasil dibersihkan otomatis.`
         );
       }
     });
   }, [handleCheckDbConnection]);
 
-  // When selectedDate changes, load data for that date
+  // Flush any pending unsaved debounced edits immediately (e.g. before date switch or unmount)
+  const flushPendingSaves = useCallback(async () => {
+    if (actDebounceTimerRef.current) {
+      clearTimeout(actDebounceTimerRef.current);
+      actDebounceTimerRef.current = null;
+    }
+    if (checkDebounceTimerRef.current) {
+      clearTimeout(checkDebounceTimerRef.current);
+      checkDebounceTimerRef.current = null;
+    }
+
+    const currentAct = latestActRef.current;
+    const currentCheck = latestCheckRef.current;
+    const actJson = JSON.stringify(currentAct);
+    const checkJson = JSON.stringify(currentCheck);
+
+    const actChanged = actJson !== lastSavedActRef.current;
+    const checkChanged = checkJson !== lastSavedCheckRef.current;
+
+    if (actChanged || checkChanged) {
+      setIsSaving(true);
+      try {
+        if (actChanged) {
+          await saveActivityReport(currentAct);
+          lastSavedActRef.current = actJson;
+        }
+        if (checkChanged) {
+          await saveChecklistReport(currentCheck);
+          lastSavedCheckRef.current = checkJson;
+        }
+        setSaveStatusText('✓ Tersimpan otomatis ke Cloud');
+      } catch (err) {
+        console.warn('Flush save warning:', err);
+      } finally {
+        setIsSaving(false);
+      }
+    }
+  }, []);
+
+  // Safe Date Selector: flushes pending changes on current date before loading target date
+  const handleSelectDate = useCallback(
+    async (newDate: string) => {
+      if (!newDate || newDate === selectedDate) return;
+      await flushPendingSaves();
+      setSelectedDate(newDate);
+    },
+    [selectedDate, flushPendingSaves]
+  );
+
+  // When selectedDate changes, load existing archive or initialize blank sheet
   useEffect(() => {
     let isCancelled = false;
 
     async function loadData() {
-      const loadedAct = await loadActivityReport(selectedDate);
-      if (!isCancelled) {
+      // Clear any pending timers
+      if (actDebounceTimerRef.current) clearTimeout(actDebounceTimerRef.current);
+      if (checkDebounceTimerRef.current) clearTimeout(checkDebounceTimerRef.current);
+
+      setIsSaving(true);
+      setSaveStatusText('Memuat laporan...');
+
+      try {
+        const [loadedAct, loadedCheck] = await Promise.all([
+          loadActivityReport(selectedDate),
+          loadChecklistReport(selectedDate),
+        ]);
+
+        if (isCancelled) return;
+
+        let finalAct: DailyActivityReport;
         if (loadedAct) {
           // If the loaded report has legacy dummy demo content, replace with clean 3-item blank sheet
           const isMockSample =
             loadedAct.logBookActivities.length === 4 &&
             loadedAct.logBookActivities[0]?.details === 'Speedtest at dian ballroom';
           if (isMockSample) {
-            setActivityReport(createDefaultActivityReport(selectedDate));
+            finalAct = createDefaultActivityReport(selectedDate);
           } else {
-            setActivityReport(loadedAct);
+            finalAct = loadedAct;
           }
         } else {
-          setActivityReport(createDefaultActivityReport(selectedDate));
+          finalAct = createDefaultActivityReport(selectedDate);
         }
-      }
 
-      const loadedCheck = await loadChecklistReport(selectedDate);
-      if (!isCancelled) {
+        let finalCheck: DailyChecklistReport;
         if (loadedCheck) {
-          setChecklistReport(loadedCheck);
+          finalCheck = loadedCheck;
         } else {
-          setChecklistReport(createDefaultChecklistReport(selectedDate));
+          finalCheck = createDefaultChecklistReport(selectedDate);
         }
+
+        // Lock in references so we do not trigger auto-save right after loading
+        lastSavedActRef.current = JSON.stringify(finalAct);
+        lastSavedCheckRef.current = JSON.stringify(finalCheck);
+        isDateLoadedRef.current = selectedDate;
+
+        setActivityReport(finalAct);
+        setChecklistReport(finalCheck);
+        setSaveStatusText('✓ Tersimpan otomatis ke Cloud');
+
+        if (loadedAct || loadedCheck) {
+          setNotification(`Arsip laporan tanggal ${selectedDate} dimuat`);
+        } else {
+          setNotification(`Lembar kerja baru tanggal ${selectedDate} (3 Aktivitas kosong)`);
+        }
+        setTimeout(() => setNotification(null), 3000);
+      } catch (err) {
+        console.error('Error loading report data:', err);
+        setSaveStatusText('Mode Offline');
+      } finally {
+        setIsSaving(false);
       }
     }
 
@@ -273,6 +368,86 @@ export default function App() {
       isCancelled = true;
     };
   }, [selectedDate]);
+
+  // Debounced Auto-Save on EVERY text change in Activity Report (No save button needed)
+  useEffect(() => {
+    if (isDateLoadedRef.current !== selectedDate) return;
+    if (activityReport.date !== selectedDate) return;
+
+    const currentJson = JSON.stringify(activityReport);
+    if (currentJson === lastSavedActRef.current) return;
+
+    setSaveStatusText('Menyimpan perubahan...');
+
+    if (actDebounceTimerRef.current) {
+      clearTimeout(actDebounceTimerRef.current);
+    }
+
+    actDebounceTimerRef.current = setTimeout(async () => {
+      try {
+        setIsSaving(true);
+        const res = await saveActivityReport(activityReport);
+        lastSavedActRef.current = currentJson;
+        setSaveStatusText(
+          res.isLocalFallback
+            ? '✓ Tersimpan di Cadangan Lokal (Offline)'
+            : '✓ Tersimpan otomatis ke Cloud'
+        );
+        setIsDbOnline(!res.isLocalFallback);
+      } catch (err) {
+        console.error('Auto save activity failed:', err);
+        setSaveStatusText('Gagal menyimpan otomatis');
+      } finally {
+        setIsSaving(false);
+      }
+    }, 600); // 600ms debounce on keystroke
+
+    return () => {
+      if (actDebounceTimerRef.current) {
+        clearTimeout(actDebounceTimerRef.current);
+      }
+    };
+  }, [activityReport, selectedDate]);
+
+  // Debounced Auto-Save on EVERY text change in Checklist Report (No save button needed)
+  useEffect(() => {
+    if (isDateLoadedRef.current !== selectedDate) return;
+    if (checklistReport.date !== selectedDate) return;
+
+    const currentJson = JSON.stringify(checklistReport);
+    if (currentJson === lastSavedCheckRef.current) return;
+
+    setSaveStatusText('Menyimpan perubahan...');
+
+    if (checkDebounceTimerRef.current) {
+      clearTimeout(checkDebounceTimerRef.current);
+    }
+
+    checkDebounceTimerRef.current = setTimeout(async () => {
+      try {
+        setIsSaving(true);
+        const res = await saveChecklistReport(checklistReport);
+        lastSavedCheckRef.current = currentJson;
+        setSaveStatusText(
+          res.isLocalFallback
+            ? '✓ Tersimpan di Cadangan Lokal (Offline)'
+            : '✓ Tersimpan otomatis ke Cloud'
+        );
+        setIsDbOnline(!res.isLocalFallback);
+      } catch (err) {
+        console.error('Auto save checklist failed:', err);
+        setSaveStatusText('Gagal menyimpan otomatis');
+      } finally {
+        setIsSaving(false);
+      }
+    }, 600); // 600ms debounce
+
+    return () => {
+      if (checkDebounceTimerRef.current) {
+        clearTimeout(checkDebounceTimerRef.current);
+      }
+    };
+  }, [checklistReport, selectedDate]);
 
   // Synchronize Internet Traffic (IN) from Activity Section 3 to Checklist item #2
   const handleSyncTrafficToChecklist = (mIn: string, aIn: string, cIn: string) => {
@@ -298,7 +473,7 @@ export default function App() {
     });
   };
 
-  // Save active report
+  // Instant Manual Save trigger (if user clicks Simpan button)
   const handleSave = async () => {
     setIsSaving(true);
     setSaveStatusText('Menyimpan data...');
@@ -306,22 +481,24 @@ export default function App() {
     try {
       if (activeTab === 'activity') {
         const res = await saveActivityReport(activityReport);
+        lastSavedActRef.current = JSON.stringify(activityReport);
         setSaveStatusText(
           res.isLocalFallback
             ? '✓ Tersimpan di Cadangan Lokal (Offline)'
-            : '✓ Tersimpan di Firebase Firestore'
+            : '✓ Tersimpan otomatis ke Cloud'
         );
         setIsDbOnline(!res.isLocalFallback);
       } else {
         const res = await saveChecklistReport(checklistReport);
+        lastSavedCheckRef.current = JSON.stringify(checklistReport);
         setSaveStatusText(
           res.isLocalFallback
             ? '✓ Tersimpan di Cadangan Lokal (Offline)'
-            : '✓ Tersimpan di Firebase Firestore'
+            : '✓ Tersimpan otomatis ke Cloud'
         );
         setIsDbOnline(!res.isLocalFallback);
       }
-      setNotification('Data laporan berhasil disimpan!');
+      setNotification('✓ Data laporan berhasil disimpan!');
       setTimeout(() => setNotification(null), 3000);
     } catch (err) {
       console.error(err);
@@ -401,7 +578,7 @@ export default function App() {
         viewMode={viewMode}
         setViewMode={setViewMode}
         selectedDate={selectedDate}
-        setSelectedDate={setSelectedDate}
+        setSelectedDate={handleSelectDate}
         onSave={handleSave}
         isSaving={isSaving}
         onPrint={handlePrint}
@@ -592,9 +769,7 @@ export default function App() {
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
         onSelectDate={(date) => {
-          setSelectedDate(date);
-          setNotification(`Menampilkan laporan tanggal ${date}`);
-          setTimeout(() => setNotification(null), 3000);
+          handleSelectDate(date);
         }}
         currentDate={selectedDate}
       />

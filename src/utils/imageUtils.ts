@@ -80,7 +80,7 @@ export function formatReportDate(dateString: string): string {
 }
 
 /**
- * Return current YYYY-MM-DD
+ * Return current YYYY-MM-DD in local time
  */
 export function getTodayDateString(): string {
   const d = new Date();
@@ -88,4 +88,27 @@ export function getTodayDateString(): string {
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+/**
+ * Safely adds or subtracts days from a YYYY-MM-DD date string without UTC timezone shift
+ */
+export function addDaysToDateString(dateString: string, days: number): string {
+  try {
+    const parts = dateString.split('-');
+    if (parts.length === 3) {
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const day = parseInt(parts[2], 10);
+      const date = new Date(year, month, day);
+      date.setDate(date.getDate() + days);
+      const yr = date.getFullYear();
+      const mo = String(date.getMonth() + 1).padStart(2, '0');
+      const da = String(date.getDate()).padStart(2, '0');
+      return `${yr}-${mo}-${da}`;
+    }
+  } catch (e) {
+    console.error('Error shifting date:', e);
+  }
+  return dateString;
 }
