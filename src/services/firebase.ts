@@ -13,7 +13,7 @@ import {
   limit,
   onSnapshot
 } from 'firebase/firestore';
-import { DailyActivityReport, DailyChecklistReport, TeamMember } from '../types';
+import { DailyActivityReport, DailyChecklistReport, TeamMember, ClientUser } from '../types';
 import { createChecklistFromPrevious, isChecklistCustomModified } from '../data/defaults';
 
 export const firebaseConfig = {
@@ -543,6 +543,46 @@ export async function loadTeamMembersFromCloud(): Promise<TeamMember[] | null> {
     }
   } catch (err) {
     console.warn('Could not load team members from Firestore:', err);
+  }
+  return null;
+}
+
+/**
+ * Save Client Users (User / Departemen) to Firestore separately from IT PICs
+ */
+export async function saveClientUsersToCloud(users: ClientUser[]): Promise<void> {
+  if (!db) return;
+  try {
+    const docRef = doc(db, 'app_settings', 'client_users');
+    await setDoc(
+      docRef,
+      {
+        users,
+        updatedAt: Date.now(),
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.warn('Could not save client users to Firestore:', err);
+  }
+}
+
+/**
+ * Load Client Users (User / Departemen) from Firestore
+ */
+export async function loadClientUsersFromCloud(): Promise<ClientUser[] | null> {
+  if (!db) return null;
+  try {
+    const docRef = doc(db, 'app_settings', 'client_users');
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      if (Array.isArray(data?.users) && data.users.length > 0) {
+        return data.users as ClientUser[];
+      }
+    }
+  } catch (err) {
+    console.warn('Could not load client users from Firestore:', err);
   }
   return null;
 }

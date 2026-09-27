@@ -15,6 +15,7 @@ import {
   Edit3,
   HardDrive,
   Users,
+  Building2,
   Wifi,
   WifiOff,
   Check,
@@ -35,6 +36,7 @@ interface Props {
   isGeneratingPdf: boolean;
   onOpenHistory: () => void;
   onOpenTeamModal: () => void;
+  onOpenUserModal: () => void;
   onOpenLogoModal: () => void;
   customLogoUrl: string | null;
   saveStatusText?: string;
@@ -57,6 +59,7 @@ export const Navbar: React.FC<Props> = ({
   isGeneratingPdf,
   onOpenHistory,
   onOpenTeamModal,
+  onOpenUserModal,
   onOpenLogoModal,
   customLogoUrl,
   saveStatusText,
@@ -162,15 +165,26 @@ export const Navbar: React.FC<Props> = ({
             </span>
           </button>
 
-          {/* Manage Team Members */}
+          {/* Manage Client Users (Hotel Users / Departments) */}
+          <button
+            type="button"
+            onClick={onOpenUserModal}
+            title="Kelola daftar User / Client Hotel & Departemen (Terpisah dari PIC IT)"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-blue-300 bg-blue-50/70 hover:bg-blue-100 text-blue-800 text-xs font-semibold transition"
+          >
+            <Building2 className="w-3.5 h-3.5 text-blue-700" />
+            <span className="hidden sm:inline">Kelola User</span>
+          </button>
+
+          {/* Manage Team Members (IT PIC) */}
           <button
             type="button"
             onClick={onOpenTeamModal}
-            title="Kelola nama petugas & status aktif"
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition"
+            title="Kelola nama petugas teknis IT (PIC) & status aktif"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-emerald-300 bg-emerald-50/70 hover:bg-emerald-100 text-emerald-800 text-xs font-semibold transition"
           >
-            <Users className="w-3.5 h-3.5 text-slate-600" />
-            <span className="hidden sm:inline">Daftar PIC</span>
+            <Users className="w-3.5 h-3.5 text-emerald-700" />
+            <span className="hidden sm:inline">Kelola PIC</span>
           </button>
 
           {/* History button */}

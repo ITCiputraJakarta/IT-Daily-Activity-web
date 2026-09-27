@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   DailyActivityReport,
   DailyChecklistReport,
-  TeamMember
+  TeamMember,
+  ClientUser
 } from './types';
 import {
   createDefaultActivityReport,
@@ -12,7 +13,9 @@ import {
 } from './data/defaults';
 import {
   loadTeamMembers,
-  saveTeamMembersToStorage
+  saveTeamMembersToStorage,
+  loadClientUsers,
+  saveClientUsersToStorage
 } from './data/teamMembers';
 import {
   getCustomLogo,
@@ -32,7 +35,9 @@ import {
   saveAppLogoToCloud,
   loadAppLogoFromCloud,
   saveTeamMembersToCloud,
-  loadTeamMembersFromCloud
+  loadTeamMembersFromCloud,
+  saveClientUsersToCloud,
+  loadClientUsersFromCloud
 } from './services/firebase';
 import { exportElementsToA4Pdf, triggerNativePrint } from './utils/pdfExport';
 import { formatReportDate, getTodayDateString } from './utils/imageUtils';
@@ -44,6 +49,7 @@ import { DailyChecklistPrintView } from './components/DailyChecklistPrintView';
 import { StorageCleanupBanner } from './components/StorageCleanupBanner';
 import { HistoryModal } from './components/HistoryModal';
 import { TeamManagementModal } from './components/TeamManagementModal';
+import { UserManagementModal } from './components/UserManagementModal';
 import { LogoManagerModal } from './components/LogoManagerModal';
 import {
   Download,
@@ -62,9 +68,13 @@ export default function App() {
   const [customLogoUrl, setCustomLogoUrl] = useState<string | null>(() => getCustomLogo());
   const [isLogoModalOpen, setIsLogoModalOpen] = useState<boolean>(false);
 
-  // Team members
+  // Team members (IT PICs)
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>(() => loadTeamMembers());
   const [isTeamModalOpen, setIsTeamModalOpen] = useState<boolean>(false);
+
+  // Client Users (Hotel Users / Clients & Departments - separate from IT PICs)
+  const [clientUsers, setClientUsers] = useState<ClientUser[]>(() => loadClientUsers());
+  const [isUserModalOpen, setIsUserModalOpen] = useState<boolean>(false);
 
   // Reports
   const [activityReport, setActivityReport] = useState<DailyActivityReport>(() =>
@@ -192,6 +202,53 @@ export default function App() {
     }
   };
 
+  // Update client users and save to local storage & cloud (with cascading report updates on user edit)
+  const handleUpdateClientUsers = (
+    updated: ClientUser[],
+    userChange?: { oldName: string; newName: string; newDepartment: string }
+  ) => {
+    setClientUsers(updated);
+    saveClientUsersToStorage(updated);
+    saveClientUsersToCloud(updated);
+
+    if (userChange) {
+      const { oldName, newName, newDepartment } = userChange;
+      setActivityReport((prev) => {
+        let changed = false;
+        const newActs = prev.logBookActivities.map((act) => {
+          if ((act.clientName || '').trim().toLowerCase() === oldName.trim().toLowerCase()) {
+            changed = true;
+            const userClientStr = newName.trim()
+              ? `${newName.trim()} (${newDepartment})`
+              : newDepartment;
+            return {
+              ...act,
+              clientName: newName,
+              clientDepartment: newDepartment,
+              userClient: userClientStr,
+            };
+          }
+          return act;
+        });
+        if (changed) {
+          const updatedRep = {
+            ...prev,
+            logBookActivities: newActs,
+            updatedAt: Date.now(),
+          };
+          latestActRef.current = updatedRep;
+          saveActivityReportLocalImmediate(updatedRep);
+          saveActivityReport(updatedRep).catch(console.error);
+          return updatedRep;
+        }
+        return prev;
+      });
+
+      setNotification(`Data User/Client "${oldName}" diperbarui menjadi "${newName}"`);
+      setTimeout(() => setNotification(null), 3500);
+    }
+  };
+
   // Wrapper for Daily Activity edits: updates state, ref, and immediate local storage
   const handleActivityChange = useCallback((updated: DailyActivityReport) => {
     const nextReport: DailyActivityReport = {
@@ -309,6 +366,14 @@ export default function App() {
       if (cloudMembers && cloudMembers.length > 0) {
         setTeamMembers(cloudMembers);
         saveTeamMembersToStorage(cloudMembers);
+      }
+    });
+
+    // Check if cloud has synced client users
+    loadClientUsersFromCloud().then((cloudUsers) => {
+      if (cloudUsers && cloudUsers.length > 0) {
+        setClientUsers(cloudUsers);
+        saveClientUsersToStorage(cloudUsers);
       }
     });
 
@@ -721,6 +786,7 @@ export default function App() {
         isGeneratingPdf={isGeneratingPdf}
         onOpenHistory={() => setIsHistoryOpen(true)}
         onOpenTeamModal={() => setIsTeamModalOpen(true)}
+        onOpenUserModal={() => setIsUserModalOpen(true)}
         onOpenLogoModal={() => setIsLogoModalOpen(true)}
         customLogoUrl={customLogoUrl}
         saveStatusText={saveStatusText}
@@ -793,6 +859,8 @@ export default function App() {
                 isSaving={isSaving}
                 teamMembers={teamMembers}
                 onOpenTeamModal={() => setIsTeamModalOpen(true)}
+                clientUsers={clientUsers}
+                onOpenUserModal={() => setIsUserModalOpen(true)}
                 onSyncTrafficToChecklist={handleSyncTrafficToChecklist}
                 customLogoUrl={customLogoUrl}
                 onOpenLogoModal={() => setIsLogoModalOpen(true)}
@@ -911,12 +979,22 @@ export default function App() {
         currentDate={selectedDate}
       />
 
-      {/* Team Management Modal */}
+      {/* Team Management Modal (IT PICs) */}
       <TeamManagementModal
         isOpen={isTeamModalOpen}
         onClose={() => setIsTeamModalOpen(false)}
         teamMembers={teamMembers}
         onUpdateTeamMembers={handleUpdateTeamMembers}
+        onSwitchToUserModal={() => setIsUserModalOpen(true)}
+      />
+
+      {/* User / Client Management Modal (Hotel Users & Departments) */}
+      <UserManagementModal
+        isOpen={isUserModalOpen}
+        onClose={() => setIsUserModalOpen(false)}
+        clientUsers={clientUsers}
+        onUpdateClientUsers={handleUpdateClientUsers}
+        onSwitchToPicModal={() => setIsTeamModalOpen(true)}
       />
 
       {/* Custom Logo Manager Modal */}

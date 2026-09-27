@@ -1,5 +1,5 @@
-import React, { useRef } from 'react';
-import { DailyActivityReport, LogBookItem, TeamMember } from '../types';
+import React, { useRef, useState, useMemo } from 'react';
+import { DailyActivityReport, LogBookItem, TeamMember, ClientUser } from '../types';
 import { CLIENT_DEPARTMENTS } from '../data/teamMembers';
 import { createDefaultActivityReport } from '../data/defaults';
 import { compressImage } from '../utils/imageUtils';
@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   Calendar,
   Building,
+  Building2,
   Thermometer,
   Wifi,
   Users,
@@ -21,7 +22,10 @@ import {
   Droplets,
   Activity,
   Layers,
-  RefreshCw
+  RefreshCw,
+  Search,
+  ArrowUpDown,
+  Filter
 } from 'lucide-react';
 
 interface Props {
@@ -31,11 +35,15 @@ interface Props {
   isSaving: boolean;
   teamMembers: TeamMember[];
   onOpenTeamModal: () => void;
+  clientUsers: ClientUser[];
+  onOpenUserModal: () => void;
   onSyncTrafficToChecklist?: (maxIn: string, avgIn: string, currentIn: string) => void;
   customLogoUrl?: string | null;
   onOpenLogoModal?: () => void;
   onAutoSaveActivity?: (updated: DailyActivityReport) => void;
 }
+
+type ActivitySortOption = 'no-asc' | 'user-asc' | 'dept-asc' | 'pic-asc' | 'status';
 
 export const DailyActivityForm: React.FC<Props> = ({
   report,
@@ -44,6 +52,8 @@ export const DailyActivityForm: React.FC<Props> = ({
   isSaving,
   teamMembers,
   onOpenTeamModal,
+  clientUsers,
+  onOpenUserModal,
   onSyncTrafficToChecklist,
   customLogoUrl,
   onOpenLogoModal,
@@ -53,7 +63,32 @@ export const DailyActivityForm: React.FC<Props> = ({
   const cameraInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
   const galleryInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
 
-  const activeMembers = teamMembers.filter((m) => m.isActive);
+  // Search, Filter & Sort state for Log Book Activities
+  const [activitySearch, setActivitySearch] = useState('');
+  const [filterPic, setFilterPic] = useState<string>('ALL');
+  const [filterDept, setFilterDept] = useState<string>('ALL');
+  const [sortBy, setSortBy] = useState<ActivitySortOption>('no-asc');
+
+  const activeMembers = useMemo(
+    () => teamMembers.filter((m) => m.isActive),
+    [teamMembers]
+  );
+
+  const activeClientUsers = useMemo(
+    () =>
+      clientUsers
+        .filter((u) => u.isActive)
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [clientUsers]
+  );
+
+  const allDepartments = useMemo(() => {
+    const set = new Set<string>(CLIENT_DEPARTMENTS);
+    clientUsers.forEach((u) => {
+      if (u.department) set.add(u.department);
+    });
+    return Array.from(set);
+  }, [clientUsers]);
 
   const updateField = <K extends keyof DailyActivityReport>(
     key: K,
@@ -133,11 +168,31 @@ export const DailyActivityForm: React.FC<Props> = ({
 
   const handleClientNameChange = (index: number, name: string) => {
     const act = report.logBookActivities[index];
-    const dept = act.clientDepartment || act.userClient || 'FO (Front Office)';
+    // Check if the typed/selected name matches a saved ClientUser to auto-fill department
+    const matchedUser = activeClientUsers.find(
+      (u) => u.name.trim().toLowerCase() === name.trim().toLowerCase()
+    );
+    const dept =
+      matchedUser?.department ||
+      act.clientDepartment ||
+      act.userClient ||
+      'FO (Front Office)';
     const userClientStr = name.trim() ? `${name.trim()} (${dept})` : dept;
     updateLogBookItem(index, {
       clientName: name,
       clientDepartment: dept,
+      userClient: userClientStr,
+    });
+  };
+
+  const handleSelectClientUser = (index: number, userId: string) => {
+    if (!userId) return;
+    const selected = clientUsers.find((u) => u.id === userId);
+    if (!selected) return;
+    const userClientStr = `${selected.name} (${selected.department})`;
+    updateLogBookItem(index, {
+      clientName: selected.name,
+      clientDepartment: selected.department,
       userClient: userClientStr,
     });
   };
@@ -151,6 +206,54 @@ export const DailyActivityForm: React.FC<Props> = ({
       userClient: userClientStr,
     });
   };
+
+  // Filtered & sorted activity indices (preserves actualIndex so edits always hit the exact item)
+  const filteredActivityIndices = useMemo(() => {
+    const q = activitySearch.trim().toLowerCase();
+    const indices = report.logBookActivities
+      .map((act, idx) => ({ act, idx }))
+      .filter(({ act }) => {
+        const dept = act.clientDepartment || act.userClient || '';
+        if (filterPic !== 'ALL' && act.pic !== filterPic) return false;
+        if (filterDept !== 'ALL' && dept !== filterDept) return false;
+        if (!q) return true;
+        return (
+          act.details.toLowerCase().includes(q) ||
+          (act.clientName || '').toLowerCase().includes(q) ||
+          dept.toLowerCase().includes(q) ||
+          act.pic.toLowerCase().includes(q) ||
+          act.status.toLowerCase().includes(q)
+        );
+      });
+
+    if (sortBy === 'user-asc') {
+      indices.sort((a, b) =>
+        (a.act.clientName || a.act.userClient || '').localeCompare(
+          b.act.clientName || b.act.userClient || ''
+        )
+      );
+    } else if (sortBy === 'dept-asc') {
+      indices.sort((a, b) =>
+        (a.act.clientDepartment || a.act.userClient || '').localeCompare(
+          b.act.clientDepartment || b.act.userClient || ''
+        )
+      );
+    } else if (sortBy === 'pic-asc') {
+      indices.sort((a, b) => a.act.pic.localeCompare(b.act.pic));
+    } else if (sortBy === 'status') {
+      const order: Record<string, number> = {
+        Pending: 1,
+        'In Progress': 2,
+        Done: 3,
+        Cancelled: 4,
+      };
+      indices.sort((a, b) => (order[a.act.status] || 9) - (order[b.act.status] || 9));
+    } else {
+      indices.sort((a, b) => a.idx - b.idx);
+    }
+
+    return indices.map((entry) => entry.idx);
+  }, [report.logBookActivities, activitySearch, filterPic, filterDept, sortBy]);
 
   const handleResetToNewWorksheet = () => {
     if (
@@ -275,14 +378,22 @@ export const DailyActivityForm: React.FC<Props> = ({
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 self-start sm:self-auto">
+          <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+            <button
+              type="button"
+              onClick={onOpenUserModal}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-lg text-xs font-semibold transition"
+            >
+              <Building2 className="w-3.5 h-3.5 text-blue-700" />
+              Kelola User / Client
+            </button>
             <button
               type="button"
               onClick={onOpenTeamModal}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-semibold transition"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-semibold transition"
             >
-              <Users className="w-3.5 h-3.5 text-slate-600" />
-              Kelola Petugas
+              <Users className="w-3.5 h-3.5 text-emerald-700" />
+              Kelola PIC IT
             </button>
             <button
               type="button"
@@ -373,11 +484,27 @@ export const DailyActivityForm: React.FC<Props> = ({
                 1. IT Log Book Activity (Aktivitas Harian & Dokumentasi Kasus)
               </h2>
               <p className="text-xs text-slate-500">
-                Upload foto via Kamera Langsung (live foto di HP/tablet) atau pilih dari Galeri
+                Daftar <strong>User / Client</strong> dan <strong>PIC IT</strong> dipisahkan serta dapat dicari &amp; disortir
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+            <button
+              type="button"
+              onClick={onOpenUserModal}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-lg text-xs font-semibold transition"
+            >
+              <Building2 className="w-3.5 h-3.5 text-blue-700" />
+              Kelola User
+            </button>
+            <button
+              type="button"
+              onClick={onOpenTeamModal}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-semibold transition"
+            >
+              <Users className="w-3.5 h-3.5 text-emerald-700" />
+              Kelola PIC
+            </button>
             <button
               type="button"
               onClick={handleResetToNewWorksheet}
@@ -398,8 +525,102 @@ export const DailyActivityForm: React.FC<Props> = ({
           </div>
         </div>
 
+        {/* Search, Filter & Sort Bar for Log Book Activities */}
+        <div className="mb-4 p-3 bg-slate-50 border border-slate-200 rounded-xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5">
+          {/* Search Input */}
+          <div className="lg:col-span-4 relative">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+            <input
+              type="text"
+              value={activitySearch}
+              onChange={(e) => setActivitySearch(e.target.value)}
+              placeholder="Cari kasus, nama user, departemen, atau PIC..."
+              className="w-full pl-8 pr-7 py-1.5 text-xs rounded-lg border border-slate-300 bg-white focus:ring-2 focus:ring-emerald-600 font-medium"
+            />
+            {activitySearch && (
+              <button
+                type="button"
+                onClick={() => setActivitySearch('')}
+                className="absolute right-2 top-2 text-slate-400 hover:text-slate-600 text-xs"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          {/* Filter by Department / User */}
+          <div className="lg:col-span-3 flex items-center gap-1.5">
+            <Filter className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+            <select
+              value={filterDept}
+              onChange={(e) => setFilterDept(e.target.value)}
+              className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-300 bg-white font-semibold text-slate-700"
+            >
+              <option value="ALL">Filter User: Semua Departemen</option>
+              {allDepartments.map((dept) => (
+                <option key={dept} value={dept}>
+                  {dept}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Filter by PIC IT */}
+          <div className="lg:col-span-2 flex items-center gap-1.5">
+            <Users className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <select
+              value={filterPic}
+              onChange={(e) => setFilterPic(e.target.value)}
+              className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-300 bg-white font-semibold text-slate-700"
+            >
+              <option value="ALL">Filter PIC: Semua</option>
+              {activeMembers.map((m) => (
+                <option key={m.id} value={m.name}>
+                  PIC: {m.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Sort Dropdown */}
+          <div className="lg:col-span-3 flex items-center gap-1.5">
+            <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as ActivitySortOption)}
+              className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-300 bg-white font-semibold text-slate-700"
+            >
+              <option value="no-asc">Sortir: No. Urut (Default)</option>
+              <option value="user-asc">Sortir: Nama User / Client (A-Z)</option>
+              <option value="dept-asc">Sortir: Departemen User (A-Z)</option>
+              <option value="pic-asc">Sortir: Nama PIC IT (A-Z)</option>
+              <option value="status">Sortir: Status Pekerjaan</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Datalist for User/Client autocomplete */}
+        <datalist id="client-users-datalist">
+          {activeClientUsers.map((u) => (
+            <option key={u.id} value={u.name}>
+              {u.department} {u.roleOrExt ? `· ${u.roleOrExt}` : ''}
+            </option>
+          ))}
+        </datalist>
+
         <div className="space-y-4">
-          {report.logBookActivities.map((act, index) => (
+          {filteredActivityIndices.length === 0 ? (
+            <div className="py-8 text-center text-xs text-slate-500 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+              Tidak ada aktivitas yang cocok dengan filter / pencarian saat ini.
+            </div>
+          ) : (
+            filteredActivityIndices.map((index) => {
+              const act = report.logBookActivities[index];
+              const matchedClientUser = activeClientUsers.find(
+                (u) => u.name.toLowerCase() === (act.clientName || '').trim().toLowerCase()
+              );
+
+              return (
             <div
               key={act.id || index}
               className="border border-slate-200 rounded-xl p-4 bg-slate-50/60 hover:bg-slate-50 transition shadow-2xs"
@@ -460,36 +681,61 @@ export const DailyActivityForm: React.FC<Props> = ({
                   />
                 </div>
 
-                {/* Nama User / Client */}
+                {/* Nama User / Client (Separated from PIC IT, with quick picker + search datalist) */}
                 <div className="md:col-span-2">
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Nama User / Client
-                  </label>
-                  <input
-                    type="text"
-                    value={act.clientName || ''}
-                    onChange={(e) => handleClientNameChange(index, e.target.value)}
-                    placeholder="misal: Pak Budi / GM"
-                    className="w-full px-2.5 py-2 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-600 bg-white font-medium text-slate-900"
-                  />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold text-blue-900">
+                      Nama User / Client
+                    </label>
+                    <button
+                      type="button"
+                      onClick={onOpenUserModal}
+                      className="text-[10px] text-blue-700 hover:underline font-bold"
+                      title="Kelola Daftar User / Client"
+                    >
+                      + Kelola User
+                    </button>
+                  </div>
+                  <div className="space-y-1">
+                    <select
+                      value={matchedClientUser?.id || ''}
+                      onChange={(e) => handleSelectClientUser(index, e.target.value)}
+                      className="w-full px-2 py-1 text-[11px] rounded-md border border-blue-200 bg-blue-50/60 text-blue-900 font-semibold focus:ring-1 focus:ring-blue-600"
+                    >
+                      <option value="">-- Pilih Cepat User --</option>
+                      {activeClientUsers.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.name} ({u.department.split(' ')[0]})
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      list="client-users-datalist"
+                      value={act.clientName || ''}
+                      onChange={(e) => handleClientNameChange(index, e.target.value)}
+                      placeholder="Ketik / cari nama user..."
+                      className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-600 bg-white font-medium text-slate-900"
+                    />
+                  </div>
                 </div>
 
                 {/* Departemen User Dropdown */}
                 <div className="md:col-span-2">
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                  <label className="block text-xs font-bold text-blue-900 mb-1">
                     Departemen User
                   </label>
                   <select
                     value={act.clientDepartment || act.userClient || 'FO (Front Office)'}
                     onChange={(e) => handleClientDeptChange(index, e.target.value)}
-                    className="w-full px-2.5 py-2 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-600 bg-white font-semibold text-slate-800"
+                    className="w-full px-2.5 py-2 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-600 bg-white font-semibold text-slate-800"
                   >
-                    {CLIENT_DEPARTMENTS.map((dept) => (
+                    {allDepartments.map((dept) => (
                       <option key={dept} value={dept}>
                         {dept}
                       </option>
                     ))}
-                    {!CLIENT_DEPARTMENTS.includes(act.clientDepartment || act.userClient) && (
+                    {!allDepartments.includes(act.clientDepartment || act.userClient) && (
                       <option value={act.clientDepartment || act.userClient}>
                         {act.clientDepartment || act.userClient} (Kustom)
                       </option>
@@ -518,13 +764,23 @@ export const DailyActivityForm: React.FC<Props> = ({
 
                 {/* PIC Dropdown (IT Person Name only) */}
                 <div className="md:col-span-2">
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    PIC IT (Petugas)
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold text-emerald-900">
+                      PIC IT (Petugas)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={onOpenTeamModal}
+                      className="text-[10px] text-emerald-700 hover:underline font-bold"
+                      title="Kelola Daftar PIC IT"
+                    >
+                      + Kelola PIC
+                    </button>
+                  </div>
                   <select
                     value={act.pic}
                     onChange={(e) => updateLogBookItem(index, { pic: e.target.value })}
-                    className="w-full px-2.5 py-2 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-600 bg-white font-bold text-slate-800"
+                    className="w-full px-2.5 py-2 text-xs rounded-lg border border-emerald-300 focus:ring-2 focus:ring-emerald-600 bg-emerald-50/40 font-bold text-slate-800"
                   >
                     {activeMembers.map((m) => (
                       <option key={m.id} value={m.name}>
@@ -669,7 +925,9 @@ export const DailyActivityForm: React.FC<Props> = ({
                 />
               </div>
             </div>
-          ))}
+              );
+            })
+          )}
         </div>
 
         {/* Bottom add activity button */}

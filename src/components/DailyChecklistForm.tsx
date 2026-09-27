@@ -14,7 +14,9 @@ import {
   Users,
   AlertCircle,
   HelpCircle,
-  Sparkles
+  Sparkles,
+  ArrowUpDown,
+  Filter
 } from 'lucide-react';
 
 interface Props {
@@ -29,6 +31,8 @@ interface Props {
   onSyncFromPreviousDate?: () => void;
 }
 
+type ChecklistSortOption = 'no-asc' | 'task-asc' | 'task-desc' | 'pic-asc' | 'status-issue';
+
 export const DailyChecklistForm: React.FC<Props> = ({
   report,
   onChange,
@@ -41,6 +45,8 @@ export const DailyChecklistForm: React.FC<Props> = ({
   onSyncFromPreviousDate,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [filterPic, setFilterPic] = useState<string>('ALL');
+  const [sortBy, setSortBy] = useState<ChecklistSortOption>('no-asc');
   const activeMembers = teamMembers.filter((m) => m.isActive);
 
   const updateField = <K extends keyof DailyChecklistReport>(
@@ -156,16 +162,44 @@ export const DailyChecklistForm: React.FC<Props> = ({
     });
   };
 
-  const filteredIndices: number[] = [];
-  report.items.forEach((it, idx) => {
-    const matches =
-      it.taskList.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      it.remark.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      it.personIncharge.toLowerCase().includes(searchQuery.toLowerCase());
-    if (matches) {
-      filteredIndices.push(idx);
-    }
-  });
+  const filteredEntries = report.items
+    .map((it, idx) => ({ it, idx }))
+    .filter(({ it }) => {
+      if (filterPic !== 'ALL' && it.personIncharge !== filterPic) return false;
+      const q = searchQuery.trim().toLowerCase();
+      if (!q) return true;
+      return (
+        it.taskList.toLowerCase().includes(q) ||
+        it.remark.toLowerCase().includes(q) ||
+        it.personIncharge.toLowerCase().includes(q)
+      );
+    });
+
+  if (sortBy === 'task-asc') {
+    filteredEntries.sort((a, b) => a.it.taskList.localeCompare(b.it.taskList));
+  } else if (sortBy === 'task-desc') {
+    filteredEntries.sort((a, b) => b.it.taskList.localeCompare(a.it.taskList));
+  } else if (sortBy === 'pic-asc') {
+    filteredEntries.sort(
+      (a, b) =>
+        (a.it.personIncharge || '').localeCompare(b.it.personIncharge || '') ||
+        a.idx - b.idx
+    );
+  } else if (sortBy === 'status-issue') {
+    const order: Record<string, number> = {
+      Issue: 1,
+      Pending: 2,
+      'In Progress': 3,
+      Checked: 4,
+    };
+    filteredEntries.sort(
+      (a, b) => (order[a.it.status] || 9) - (order[b.it.status] || 9) || a.idx - b.idx
+    );
+  } else {
+    filteredEntries.sort((a, b) => a.idx - b.idx);
+  }
+
+  const filteredIndices: number[] = filteredEntries.map((e) => e.idx);
 
   return (
     <div className="space-y-6 pb-16 font-sans">
@@ -204,10 +238,10 @@ export const DailyChecklistForm: React.FC<Props> = ({
             <button
               type="button"
               onClick={onOpenTeamModal}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-semibold transition"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-semibold transition"
             >
-              <Users className="w-3.5 h-3.5 text-slate-600" />
-              Kelola Daftar Nama Petugas
+              <Users className="w-3.5 h-3.5 text-emerald-700" />
+              Kelola PIC IT
             </button>
             <button
               type="button"
@@ -378,17 +412,57 @@ export const DailyChecklistForm: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Search Input */}
-        <div className="mb-4">
-          <div className="relative max-w-sm">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+        {/* Search, Filter & Sort Controls */}
+        <div className="mb-4 p-3 bg-slate-50 border border-slate-200 rounded-xl grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+          <div className="sm:col-span-5 relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Cari task list, PIC, atau remark..."
-              className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-600 focus:border-transparent font-medium"
+              placeholder="Cari task list, nama PIC, atau remark..."
+              className="w-full pl-9 pr-7 py-1.5 text-xs rounded-lg border border-slate-300 bg-white focus:ring-2 focus:ring-emerald-600 focus:border-transparent font-medium"
             />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 text-xs"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          <div className="sm:col-span-3 flex items-center gap-1.5">
+            <Filter className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <select
+              value={filterPic}
+              onChange={(e) => setFilterPic(e.target.value)}
+              className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-300 bg-white font-semibold text-slate-700"
+            >
+              <option value="ALL">Filter PIC: Semua Petugas</option>
+              {activeMembers.map((m) => (
+                <option key={m.id} value={m.name}>
+                  PIC: {m.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="sm:col-span-4 flex items-center gap-1.5">
+            <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as ChecklistSortOption)}
+              className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-300 bg-white font-semibold text-slate-700"
+            >
+              <option value="no-asc">Sortir: No. Urut (Default)</option>
+              <option value="task-asc">Sortir: Nama Task (A - Z)</option>
+              <option value="task-desc">Sortir: Nama Task (Z - A)</option>
+              <option value="pic-asc">Sortir: Person Incharge / PIC (A - Z)</option>
+              <option value="status-issue">Sortir: Status (Issue/Pending Teratas)</option>
+            </select>
           </div>
         </div>
 

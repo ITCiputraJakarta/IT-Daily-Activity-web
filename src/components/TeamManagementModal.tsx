@@ -1,27 +1,77 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { TeamMember } from '../types';
-import { Users, Plus, Check, X, Trash2, UserCheck, UserX, Pencil } from 'lucide-react';
+import {
+  Users,
+  Plus,
+  Check,
+  X,
+  Trash2,
+  UserCheck,
+  UserX,
+  Pencil,
+  Search,
+  ArrowUpDown,
+  Building2
+} from 'lucide-react';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   teamMembers: TeamMember[];
   onUpdateTeamMembers: (members: TeamMember[], nameChange?: { oldName: string; newName: string }) => void;
+  onSwitchToUserModal?: () => void;
 }
+
+type PicSortOption = 'default' | 'name-asc' | 'name-desc' | 'role-asc' | 'status-active';
 
 export const TeamManagementModal: React.FC<Props> = ({
   isOpen,
   onClose,
   teamMembers,
   onUpdateTeamMembers,
+  onSwitchToUserModal,
 }) => {
   const [newName, setNewName] = useState('');
   const [newRole, setNewRole] = useState('IT Support');
+
+  // Search & Sort state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState<PicSortOption>('default');
 
   // Edit state
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
   const [editingRole, setEditingRole] = useState('');
+
+  const filteredAndSortedMembers = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    const filtered = teamMembers.filter((m) => {
+      if (!q) return true;
+      return (
+        m.name.toLowerCase().includes(q) ||
+        (m.role || '').toLowerCase().includes(q)
+      );
+    });
+
+    const sorted = [...filtered];
+    if (sortBy === 'name-asc') {
+      sorted.sort((a, b) => a.name.localeCompare(b.name));
+    } else if (sortBy === 'name-desc') {
+      sorted.sort((a, b) => b.name.localeCompare(a.name));
+    } else if (sortBy === 'role-asc') {
+      sorted.sort(
+        (a, b) =>
+          (a.role || '').localeCompare(b.role || '') ||
+          a.name.localeCompare(b.name)
+      );
+    } else if (sortBy === 'status-active') {
+      sorted.sort((a, b) => {
+        if (a.isActive === b.isActive) return a.name.localeCompare(b.name);
+        return a.isActive ? -1 : 1;
+      });
+    }
+    return sorted;
+  }, [teamMembers, searchQuery, sortBy]);
 
   if (!isOpen) return null;
 
@@ -100,21 +150,44 @@ export const TeamManagementModal: React.FC<Props> = ({
       <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-200">
         {/* Header */}
         <div className="flex items-center justify-between p-4 bg-slate-900 text-white">
-          <div className="flex items-center gap-2">
-            <Users className="w-5 h-5 text-emerald-400" />
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-emerald-900/80 text-emerald-300">
+              <Users className="w-5 h-5" />
+            </div>
             <div>
-              <h3 className="font-bold text-base">Kelola Daftar Petugas IT (PIC)</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-base">Kelola Daftar Petugas IT (PIC)</h3>
+                <span className="text-[10px] bg-emerald-800 text-emerald-200 px-2 py-0.5 rounded-full font-bold border border-emerald-700">
+                  Khusus Tim IT
+                </span>
+              </div>
               <p className="text-[11px] text-slate-300">
-                Tambah, edit nama/posisi, dan atur status aktif petugas
+                Kelola nama teknisi/petugas IT (PIC) untuk Activity & Shift Checklist
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1.5">
+            {onSwitchToUserModal && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onSwitchToUserModal();
+                }}
+                className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-blue-300 text-[11px] font-semibold flex items-center gap-1 border border-slate-700 transition"
+                title="Buka Kelola User / Client Hotel"
+              >
+                <Building2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Ke Kelola User</span>
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Body */}
@@ -122,26 +195,26 @@ export const TeamManagementModal: React.FC<Props> = ({
           {/* Add member form */}
           <form
             onSubmit={handleAddMember}
-            className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2"
+            className="p-3 bg-emerald-50/50 border border-emerald-200 rounded-xl space-y-2"
           >
-            <div className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+            <div className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
               <Plus className="w-3.5 h-3.5 text-emerald-700" />
-              Tambah Petugas Baru
+              Tambah Petugas PIC IT Baru
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
               <input
                 type="text"
-                placeholder="Nama Petugas (misal: Andika / PIC-02)"
+                placeholder="Nama Petugas IT (misal: Andika / PIC-02)"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                className="sm:col-span-6 px-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-600 focus:border-transparent font-medium"
+                className="sm:col-span-6 px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white focus:ring-2 focus:ring-emerald-600 focus:border-transparent font-medium"
               />
               <input
                 type="text"
                 placeholder="Posisi (misal: IT Support)"
                 value={newRole}
                 onChange={(e) => setNewRole(e.target.value)}
-                className="sm:col-span-4 px-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-600 focus:border-transparent"
+                className="sm:col-span-4 px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white focus:ring-2 focus:ring-emerald-600 focus:border-transparent"
               />
               <button
                 type="submit"
@@ -153,16 +226,60 @@ export const TeamManagementModal: React.FC<Props> = ({
             </div>
           </form>
 
+          {/* Search & Sort Bar */}
+          <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-12 gap-2">
+            <div className="sm:col-span-7 relative">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Cari nama PIC IT atau posisi/jabatan..."
+                className="w-full pl-8 pr-7 py-1.5 text-xs rounded-lg border border-slate-300 bg-white focus:ring-2 focus:ring-emerald-600 font-medium"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2 top-1.5 text-slate-400 hover:text-slate-600 text-xs"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+            <div className="sm:col-span-5 flex items-center gap-1.5">
+              <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as PicSortOption)}
+                className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-300 bg-white font-semibold text-slate-700"
+              >
+                <option value="default">Sortir: Urutan Default</option>
+                <option value="name-asc">Sortir: Nama PIC (A - Z)</option>
+                <option value="name-desc">Sortir: Nama PIC (Z - A)</option>
+                <option value="role-asc">Sortir: Jabatan (A - Z)</option>
+                <option value="status-active">Sortir: Aktif Teratas</option>
+              </select>
+            </div>
+          </div>
+
           {/* Members list */}
           <div className="space-y-2">
             <div className="text-xs font-semibold text-slate-700 flex justify-between items-center">
-              <span>Daftar Petugas IT ({teamMembers.length})</span>
+              <span>
+                Daftar Petugas IT ({filteredAndSortedMembers.length} dari {teamMembers.length})
+              </span>
               <span className="text-[11px] text-slate-500 font-normal">
                 Gunakan tombol <strong>Edit</strong> untuk mengubah nama
               </span>
             </div>
 
-            {teamMembers.map((member) => (
+            {filteredAndSortedMembers.length === 0 ? (
+              <div className="py-6 text-center text-xs text-slate-500 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                Tidak ada petugas PIC yang cocok dengan pencarian &quot;{searchQuery}&quot;.
+              </div>
+            ) : (
+              filteredAndSortedMembers.map((member) => (
               <div
                 key={member.id}
                 className={`rounded-xl border transition overflow-hidden ${
@@ -301,7 +418,8 @@ export const TeamManagementModal: React.FC<Props> = ({
                   </div>
                 )}
               </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
 

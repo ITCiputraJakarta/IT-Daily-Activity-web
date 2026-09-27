@@ -5,6 +5,14 @@ export interface TeamMember {
   isActive: boolean;
 }
 
+export interface ClientUser {
+  id: string;
+  name: string;
+  department: string;
+  roleOrExt?: string;
+  isActive: boolean;
+}
+
 export interface LogBookItem {
   id: string;
   no: number;
