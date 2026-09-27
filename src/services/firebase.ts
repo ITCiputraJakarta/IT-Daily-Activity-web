@@ -16,17 +16,21 @@ import {
 import { DailyActivityReport, DailyChecklistReport, TeamMember } from '../types';
 
 export const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyCBuEIu1ITK40brP7SCWKQOQBdaMDFQx6M",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "daily-ctivity-itbg.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "daily-ctivity-itbg",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "daily-ctivity-itbg.firebasestorage.app",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "927845263252",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:927845263252:web:92522c80b69caf611a1181"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || ""
 };
 
+const isFirebaseConfigured = Boolean(firebaseConfig.apiKey && firebaseConfig.projectId);
+
 // Initialize Firebase App safely
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-export const db = getFirestore(app);
+const app = isFirebaseConfigured
+  ? (getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0])
+  : null;
+export const db = app ? getFirestore(app) : (null as unknown as ReturnType<typeof getFirestore>);
 
 export const COLLECTION_ACTIVITIES = 'daily_activities';
 export const COLLECTION_CHECKLISTS = 'daily_checklists';
@@ -42,6 +46,12 @@ const LS_PREFIX_CHECKLIST = 'hcj_it_checklist_';
  * Check and test connection to Firebase Firestore
  */
 export async function checkFirestoreConnection(): Promise<{ isOnline: boolean; message: string; latencyMs?: number }> {
+  if (!db) {
+    return {
+      isOnline: false,
+      message: 'Mode Offline (Penyimpanan Lokal Aktif)',
+    };
+  }
   const start = performance.now();
   try {
     const testDocRef = doc(db, '_health_check', 'ping');
@@ -82,6 +92,10 @@ export async function saveActivityReport(report: DailyActivityReport): Promise<{
     console.warn('LocalStorage save failed:', e);
   }
 
+  if (!db) {
+    return { success: true, isLocalFallback: true };
+  }
+
   try {
     const docRef = doc(db, COLLECTION_ACTIVITIES, report.date);
     await setDoc(docRef, cleanedReport);
@@ -96,14 +110,16 @@ export async function saveActivityReport(report: DailyActivityReport): Promise<{
  * Load Daily Activity Report by Date
  */
 export async function loadActivityReport(dateStr: string): Promise<DailyActivityReport | null> {
-  try {
-    const docRef = doc(db, COLLECTION_ACTIVITIES, dateStr);
-    const snap = await getDoc(docRef);
-    if (snap.exists()) {
-      return snap.data() as DailyActivityReport;
+  if (db) {
+    try {
+      const docRef = doc(db, COLLECTION_ACTIVITIES, dateStr);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        return snap.data() as DailyActivityReport;
+      }
+    } catch (error) {
+      console.warn('Firestore loadActivityReport failed, checking local storage:', error);
     }
-  } catch (error) {
-    console.warn('Firestore loadActivityReport failed, checking local storage:', error);
   }
 
   // Fallback to local storage
@@ -136,6 +152,10 @@ export async function saveChecklistReport(report: DailyChecklistReport): Promise
     console.warn('LocalStorage save failed:', e);
   }
 
+  if (!db) {
+    return { success: true, isLocalFallback: true };
+  }
+
   try {
     const docRef = doc(db, COLLECTION_CHECKLISTS, report.date);
     await setDoc(docRef, cleanedReport);
@@ -150,14 +170,16 @@ export async function saveChecklistReport(report: DailyChecklistReport): Promise
  * Load Daily Checklist Report by Date
  */
 export async function loadChecklistReport(dateStr: string): Promise<DailyChecklistReport | null> {
-  try {
-    const docRef = doc(db, COLLECTION_CHECKLISTS, dateStr);
-    const snap = await getDoc(docRef);
-    if (snap.exists()) {
-      return snap.data() as DailyChecklistReport;
+  if (db) {
+    try {
+      const docRef = doc(db, COLLECTION_CHECKLISTS, dateStr);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        return snap.data() as DailyChecklistReport;
+      }
+    } catch (error) {
+      console.warn('Firestore loadChecklistReport failed, checking local storage:', error);
     }
-  } catch (error) {
-    console.warn('Firestore loadChecklistReport failed, checking local storage:', error);
   }
 
   const local = localStorage.getItem(LS_PREFIX_CHECKLIST + dateStr);
@@ -181,30 +203,32 @@ export async function runAutoCleanupExpiredRecords(maxAgeMs = TWO_MONTHS_MS): Pr
   let deletedActivities = 0;
   let deletedChecklists = 0;
 
-  try {
-    // 1. Cleanup expired activities
-    const actQuery = query(
-      collection(db, COLLECTION_ACTIVITIES),
-      where('createdAt', '<', cutoffTime)
-    );
-    const actSnap = await getDocs(actQuery);
-    for (const d of actSnap.docs) {
-      await deleteDoc(doc(db, COLLECTION_ACTIVITIES, d.id));
-      deletedActivities++;
-    }
+  if (db) {
+    try {
+      // 1. Cleanup expired activities
+      const actQuery = query(
+        collection(db, COLLECTION_ACTIVITIES),
+        where('createdAt', '<', cutoffTime)
+      );
+      const actSnap = await getDocs(actQuery);
+      for (const d of actSnap.docs) {
+        await deleteDoc(doc(db, COLLECTION_ACTIVITIES, d.id));
+        deletedActivities++;
+      }
 
-    // 2. Cleanup expired checklists
-    const checkQuery = query(
-      collection(db, COLLECTION_CHECKLISTS),
-      where('createdAt', '<', cutoffTime)
-    );
-    const checkSnap = await getDocs(checkQuery);
-    for (const d of checkSnap.docs) {
-      await deleteDoc(doc(db, COLLECTION_CHECKLISTS, d.id));
-      deletedChecklists++;
+      // 2. Cleanup expired checklists
+      const checkQuery = query(
+        collection(db, COLLECTION_CHECKLISTS),
+        where('createdAt', '<', cutoffTime)
+      );
+      const checkSnap = await getDocs(checkQuery);
+      for (const d of checkSnap.docs) {
+        await deleteDoc(doc(db, COLLECTION_CHECKLISTS, d.id));
+        deletedChecklists++;
+      }
+    } catch (error) {
+      console.warn('Auto cleanup Firestore encountered an error:', error);
     }
-  } catch (error) {
-    console.warn('Auto cleanup Firestore encountered an error:', error);
   }
 
   // Also clean local storage for expired items
@@ -236,14 +260,16 @@ export async function getSavedReportDates(): Promise<{ activityDates: string[]; 
   const activityDates: Set<string> = new Set();
   const checklistDates: Set<string> = new Set();
 
-  try {
-    const actSnap = await getDocs(collection(db, COLLECTION_ACTIVITIES));
-    actSnap.forEach((d) => activityDates.add(d.id));
+  if (db) {
+    try {
+      const actSnap = await getDocs(collection(db, COLLECTION_ACTIVITIES));
+      actSnap.forEach((d) => activityDates.add(d.id));
 
-    const checkSnap = await getDocs(collection(db, COLLECTION_CHECKLISTS));
-    checkSnap.forEach((d) => checklistDates.add(d.id));
-  } catch (err) {
-    console.warn('Could not query Firestore collections:', err);
+      const checkSnap = await getDocs(collection(db, COLLECTION_CHECKLISTS));
+      checkSnap.forEach((d) => checklistDates.add(d.id));
+    } catch (err) {
+      console.warn('Could not query Firestore collections:', err);
+    }
   }
 
   // Also read from localStorage
@@ -266,6 +292,7 @@ export async function getSavedReportDates(): Promise<{ activityDates: string[]; 
  * Save custom logo to Firestore so all devices/users share the exact same branding
  */
 export async function saveAppLogoToCloud(logoUrl: string | null): Promise<void> {
+  if (!db) return;
   try {
     const logoDocRef = doc(db, 'app_settings', 'company_logo');
     await setDoc(
@@ -285,6 +312,7 @@ export async function saveAppLogoToCloud(logoUrl: string | null): Promise<void> 
  * Load custom logo from Firestore
  */
 export async function loadAppLogoFromCloud(): Promise<string | null> {
+  if (!db) return null;
   try {
     const logoDocRef = doc(db, 'app_settings', 'company_logo');
     const snap = await getDoc(logoDocRef);
@@ -302,6 +330,7 @@ export async function loadAppLogoFromCloud(): Promise<string | null> {
  * Save IT PIC team members to Firestore so all devices/users share the exact same active team
  */
 export async function saveTeamMembersToCloud(members: TeamMember[]): Promise<void> {
+  if (!db) return;
   try {
     const docRef = doc(db, 'app_settings', 'team_members');
     await setDoc(
@@ -321,6 +350,7 @@ export async function saveTeamMembersToCloud(members: TeamMember[]): Promise<voi
  * Load IT PIC team members from Firestore
  */
 export async function loadTeamMembersFromCloud(): Promise<TeamMember[] | null> {
+  if (!db) return null;
   try {
     const docRef = doc(db, 'app_settings', 'team_members');
     const snap = await getDoc(docRef);
