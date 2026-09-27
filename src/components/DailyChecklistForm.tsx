@@ -26,6 +26,7 @@ interface Props {
   onOpenTeamModal: () => void;
   customLogoUrl?: string | null;
   onOpenLogoModal?: () => void;
+  onSyncFromPreviousDate?: () => void;
 }
 
 export const DailyChecklistForm: React.FC<Props> = ({
@@ -37,6 +38,7 @@ export const DailyChecklistForm: React.FC<Props> = ({
   onOpenTeamModal,
   customLogoUrl,
   onOpenLogoModal,
+  onSyncFromPreviousDate,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const activeMembers = teamMembers.filter((m) => m.isActive);
@@ -96,7 +98,7 @@ export const DailyChecklistForm: React.FC<Props> = ({
   const resetToDefaultTemplate = () => {
     if (
       window.confirm(
-        'Buka lembar kerja checklist baru yang bersih untuk hari ini?\n• 31 Task standar Hotel Ciputra Jakarta\n• Status Checked, remark bersih\n• Pilihan Morning & Evening Shift dikosongkan'
+        `Buka lembar kerja checklist standar (${DEFAULT_CHECKLIST_ITEMS.length} Task) untuk hari ini?\n• ${DEFAULT_CHECKLIST_ITEMS.length} Task standar Hotel Ciputra Jakarta\n• Status Checked, remark bersih\n• Pilihan Morning & Evening Shift dikosongkan`
       )
     ) {
       onChange({
@@ -117,18 +119,40 @@ export const DailyChecklistForm: React.FC<Props> = ({
     updateField('items', updated);
   };
 
-  // Dedicated shift changes: only updates the shift PIC without overwriting individual checklist items
+  // Shift change handlers: updates shift PIC and cascades to items that were empty or matched the previous shift PIC
   const handleMorningShiftChange = (newPic: string) => {
+    const oldMorning = report.morningShiftPic;
+    const updatedItems = report.items.map((it) => {
+      if (
+        !it.personIncharge ||
+        (oldMorning && oldMorning !== report.eveningShiftPic && it.personIncharge === oldMorning)
+      ) {
+        return { ...it, personIncharge: newPic };
+      }
+      return it;
+    });
     onChange({
       ...report,
       morningShiftPic: newPic,
+      items: updatedItems,
     });
   };
 
   const handleEveningShiftChange = (newPic: string) => {
+    const oldEvening = report.eveningShiftPic;
+    const updatedItems = report.items.map((it) => {
+      if (
+        (oldEvening && oldEvening !== report.morningShiftPic && it.personIncharge === oldEvening) ||
+        (!it.personIncharge && !report.morningShiftPic)
+      ) {
+        return { ...it, personIncharge: newPic };
+      }
+      return it;
+    });
     onChange({
       ...report,
       eveningShiftPic: newPic,
+      items: updatedItems,
     });
   };
 
@@ -153,12 +177,12 @@ export const DailyChecklistForm: React.FC<Props> = ({
               <CiputraLogo size="sm" customLogoUrl={customLogoUrl} />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-base font-bold text-slate-900">
                   Shift Petugas & Informasi Checklist
                 </h2>
                 <span className="text-xs bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded-full">
-                  31 Task Standar
+                  {report.items.length} Task
                 </span>
                 {onOpenLogoModal && (
                   <button
@@ -171,7 +195,7 @@ export const DailyChecklistForm: React.FC<Props> = ({
                 )}
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                Logo di samping akan dicetak pada header IT Daily Checklist A4.
+                Default mengikuti tanggal sebelumnya secara otomatis. Jika diedit hari ini, tanggal berikutnya akan mengikuti tampilan ini.
               </p>
             </div>
           </div>
@@ -303,12 +327,23 @@ export const DailyChecklistForm: React.FC<Props> = ({
               Daftar Tugas Checklist Harian
             </h2>
             <span className="text-xs bg-slate-100 text-slate-700 font-bold px-2 py-0.5 rounded-full">
-              {report.items.length} Item
+              {report.items.length} Task
             </span>
           </div>
 
           {/* Quick Action Buttons */}
           <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+            {onSyncFromPreviousDate && (
+              <button
+                type="button"
+                onClick={onSyncFromPreviousDate}
+                title="Ambil & salin ulang tampilan checklist dari tanggal sebelumnya"
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-xs font-bold transition"
+              >
+                <RefreshCw className="w-3.5 h-3.5 text-amber-700" />
+                Ikuti Tgl Sebelumnya
+              </button>
+            )}
             <button
               type="button"
               onClick={markAllChecked}
@@ -335,7 +370,7 @@ export const DailyChecklistForm: React.FC<Props> = ({
             <button
               type="button"
               onClick={resetToDefaultTemplate}
-              title="Reset ke template 31 task"
+              title={`Reset ke template standar (${DEFAULT_CHECKLIST_ITEMS.length} task)`}
               className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg"
             >
               <RefreshCw className="w-4 h-4" />
@@ -403,16 +438,18 @@ export const DailyChecklistForm: React.FC<Props> = ({
                         }
                         className="w-full px-2 py-1 text-xs rounded border border-slate-200 focus:border-emerald-600 font-medium bg-white"
                       >
+                        <option value="">-- Pilih PIC --</option>
                         {activeMembers.map((m) => (
                           <option key={m.id} value={m.name}>
                             {m.name}
                           </option>
                         ))}
-                        {!activeMembers.some((m) => m.name === item.personIncharge) && (
-                          <option value={item.personIncharge}>
-                            {item.personIncharge} (Kustom)
-                          </option>
-                        )}
+                        {item.personIncharge &&
+                          !activeMembers.some((m) => m.name === item.personIncharge) && (
+                            <option value={item.personIncharge}>
+                              {item.personIncharge} (Kustom)
+                            </option>
+                          )}
                       </select>
                     </td>
 
@@ -516,14 +553,16 @@ export const DailyChecklistForm: React.FC<Props> = ({
                       }
                       className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-white font-semibold text-slate-800"
                     >
+                      <option value="">-- Pilih PIC --</option>
                       {activeMembers.map((m) => (
                         <option key={m.id} value={m.name}>
                           {m.name}
                         </option>
                       ))}
-                      {!activeMembers.some((m) => m.name === item.personIncharge) && (
-                        <option value={item.personIncharge}>{item.personIncharge} (Kustom)</option>
-                      )}
+                      {item.personIncharge &&
+                        !activeMembers.some((m) => m.name === item.personIncharge) && (
+                          <option value={item.personIncharge}>{item.personIncharge} (Kustom)</option>
+                        )}
                     </select>
                   </div>
 

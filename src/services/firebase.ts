@@ -14,6 +14,7 @@ import {
   onSnapshot
 } from 'firebase/firestore';
 import { DailyActivityReport, DailyChecklistReport, TeamMember } from '../types';
+import { createChecklistFromPrevious, isChecklistCustomModified } from '../data/defaults';
 
 export const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
@@ -74,6 +75,87 @@ export async function checkFirestoreConnection(): Promise<{ isOnline: boolean; m
 }
 
 /**
+ * Immediately persist Daily Activity Report to LocalStorage (0ms latency)
+ */
+export function saveActivityReportLocalImmediate(report: DailyActivityReport): void {
+  const now = Date.now();
+  const cleanedReport: DailyActivityReport = {
+    ...report,
+    updatedAt: report.updatedAt || now,
+    createdAt: report.createdAt || now,
+    expiresAt: report.expiresAt || (now + TWO_MONTHS_MS),
+  };
+  try {
+    localStorage.setItem(LS_PREFIX_ACTIVITY + report.date, JSON.stringify(cleanedReport));
+  } catch (e) {
+    console.warn('LocalStorage immediate activity save failed:', e);
+  }
+}
+
+/**
+ * Propagate an edited checklist's default state forward to any already-created future dates
+ * (> sourceReport.date) in LocalStorage that have NOT been manually edited (isUserModified === false),
+ * stopping at the first future date that WAS manually edited (isUserModified === true).
+ */
+export function propagateChecklistLocalForward(sourceReport: DailyChecklistReport): string[] {
+  const updatedFutureDates: string[] = [];
+  try {
+    const futureKeys: { date: string; key: string }[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(LS_PREFIX_CHECKLIST)) {
+        const d = k.replace(LS_PREFIX_CHECKLIST, '');
+        if (d > sourceReport.date) {
+          futureKeys.push({ date: d, key: k });
+        }
+      }
+    }
+    futureKeys.sort((a, b) => a.date.localeCompare(b.date));
+
+    for (const { date, key } of futureKeys) {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      try {
+        const parsed = JSON.parse(raw) as DailyChecklistReport;
+        if (parsed.isUserModified === true) {
+          // Stop propagating once we hit a future date that was explicitly edited by the user
+          break;
+        }
+        const inherited = createChecklistFromPrevious(date, sourceReport);
+        localStorage.setItem(key, JSON.stringify(inherited));
+        updatedFutureDates.push(date);
+      } catch {
+        // ignore parse errors
+      }
+    }
+  } catch (e) {
+    console.warn('Forward checklist propagation warning:', e);
+  }
+  return updatedFutureDates;
+}
+
+/**
+ * Immediately persist Daily Checklist Report to LocalStorage (0ms latency)
+ */
+export function saveChecklistReportLocalImmediate(report: DailyChecklistReport): void {
+  const now = Date.now();
+  const cleanedReport: DailyChecklistReport = {
+    ...report,
+    updatedAt: report.updatedAt || now,
+    createdAt: report.createdAt || now,
+    expiresAt: report.expiresAt || (now + TWO_MONTHS_MS),
+  };
+  try {
+    localStorage.setItem(LS_PREFIX_CHECKLIST + report.date, JSON.stringify(cleanedReport));
+    if (cleanedReport.isUserModified) {
+      propagateChecklistLocalForward(cleanedReport);
+    }
+  } catch (e) {
+    console.warn('LocalStorage immediate checklist save failed:', e);
+  }
+}
+
+/**
  * Save Daily Activity Report to Firestore (with localStorage fallback)
  */
 export async function saveActivityReport(report: DailyActivityReport): Promise<{ success: boolean; isLocalFallback?: boolean }> {
@@ -107,31 +189,39 @@ export async function saveActivityReport(report: DailyActivityReport): Promise<{
 }
 
 /**
- * Load Daily Activity Report by Date
+ * Load Daily Activity Report by Date (picks newest between Cloud and LocalStorage)
  */
 export async function loadActivityReport(dateStr: string): Promise<DailyActivityReport | null> {
+  let cloudReport: DailyActivityReport | null = null;
+  let localReport: DailyActivityReport | null = null;
+
+  const local = localStorage.getItem(LS_PREFIX_ACTIVITY + dateStr);
+  if (local) {
+    try {
+      localReport = JSON.parse(local) as DailyActivityReport;
+    } catch {
+      localReport = null;
+    }
+  }
+
   if (db) {
     try {
       const docRef = doc(db, COLLECTION_ACTIVITIES, dateStr);
       const snap = await getDoc(docRef);
       if (snap.exists()) {
-        return snap.data() as DailyActivityReport;
+        cloudReport = snap.data() as DailyActivityReport;
       }
     } catch (error) {
       console.warn('Firestore loadActivityReport failed, checking local storage:', error);
     }
   }
 
-  // Fallback to local storage
-  const local = localStorage.getItem(LS_PREFIX_ACTIVITY + dateStr);
-  if (local) {
-    try {
-      return JSON.parse(local);
-    } catch {
-      return null;
-    }
+  if (cloudReport && localReport) {
+    return (localReport.updatedAt || 0) >= (cloudReport.updatedAt || 0)
+      ? localReport
+      : cloudReport;
   }
-  return null;
+  return localReport || cloudReport || null;
 }
 
 /**
@@ -146,8 +236,12 @@ export async function saveChecklistReport(report: DailyChecklistReport): Promise
     expiresAt: report.expiresAt || (now + TWO_MONTHS_MS),
   };
 
+  let propagatedDates: string[] = [];
   try {
     localStorage.setItem(LS_PREFIX_CHECKLIST + report.date, JSON.stringify(cleanedReport));
+    if (cleanedReport.isUserModified) {
+      propagatedDates = propagateChecklistLocalForward(cleanedReport);
+    }
   } catch (e) {
     console.warn('LocalStorage save failed:', e);
   }
@@ -159,6 +253,16 @@ export async function saveChecklistReport(report: DailyChecklistReport): Promise
   try {
     const docRef = doc(db, COLLECTION_CHECKLISTS, report.date);
     await setDoc(docRef, cleanedReport);
+
+    // Also sync any forward-propagated unedited future dates to Firestore
+    for (const futDate of propagatedDates) {
+      const rawFut = localStorage.getItem(LS_PREFIX_CHECKLIST + futDate);
+      if (rawFut) {
+        const parsedFut = JSON.parse(rawFut) as DailyChecklistReport;
+        await setDoc(doc(db, COLLECTION_CHECKLISTS, futDate), parsedFut);
+      }
+    }
+
     return { success: true };
   } catch (error) {
     console.error('Firestore saveChecklistReport error, using local fallback:', error);
@@ -167,30 +271,107 @@ export async function saveChecklistReport(report: DailyChecklistReport): Promise
 }
 
 /**
- * Load Daily Checklist Report by Date
+ * Load Daily Checklist Report by Date (picks newest between Cloud and LocalStorage)
  */
 export async function loadChecklistReport(dateStr: string): Promise<DailyChecklistReport | null> {
+  let cloudReport: DailyChecklistReport | null = null;
+  let localReport: DailyChecklistReport | null = null;
+
+  const local = localStorage.getItem(LS_PREFIX_CHECKLIST + dateStr);
+  if (local) {
+    try {
+      localReport = JSON.parse(local) as DailyChecklistReport;
+    } catch {
+      localReport = null;
+    }
+  }
+
   if (db) {
     try {
       const docRef = doc(db, COLLECTION_CHECKLISTS, dateStr);
       const snap = await getDoc(docRef);
       if (snap.exists()) {
-        return snap.data() as DailyChecklistReport;
+        cloudReport = snap.data() as DailyChecklistReport;
       }
     } catch (error) {
       console.warn('Firestore loadChecklistReport failed, checking local storage:', error);
     }
   }
 
-  const local = localStorage.getItem(LS_PREFIX_CHECKLIST + dateStr);
-  if (local) {
+  if (cloudReport && localReport) {
+    return (localReport.updatedAt || 0) >= (cloudReport.updatedAt || 0)
+      ? localReport
+      : cloudReport;
+  }
+  return localReport || cloudReport || null;
+}
+
+/**
+ * Finds the most recent saved DailyChecklistReport prior to `targetDate` (date < targetDate).
+ * Prioritizes reports that were explicitly edited by the user (`isChecklistCustomModified(rep) === true`),
+ * so that when moving to a new date, the default view follows the previous date's checklist
+ * (Morning Shift PIC, Evening Shift PIC, and all checklist tasks/contents).
+ */
+export async function loadPreviousChecklistReport(targetDate: string): Promise<DailyChecklistReport | null> {
+  const byDate = new Map<string, DailyChecklistReport>();
+
+  // 1. Collect from LocalStorage
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(LS_PREFIX_CHECKLIST)) {
+        const d = key.replace(LS_PREFIX_CHECKLIST, '');
+        if (d < targetDate) {
+          const raw = localStorage.getItem(key);
+          if (raw) {
+            try {
+              const parsed = JSON.parse(raw) as DailyChecklistReport;
+              byDate.set(d, parsed);
+            } catch {
+              // ignore
+            }
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Could not read previous checklists from localStorage:', e);
+  }
+
+  // 2. Collect from Firestore if online
+  if (db) {
     try {
-      return JSON.parse(local);
-    } catch {
-      return null;
+      const snap = await getDocs(collection(db, COLLECTION_CHECKLISTS));
+      snap.forEach((docSnap) => {
+        const d = docSnap.id;
+        if (d < targetDate) {
+          const cloudData = docSnap.data() as DailyChecklistReport;
+          const existing = byDate.get(d);
+          if (!existing || (cloudData.updatedAt || 0) > (existing.updatedAt || 0)) {
+            byDate.set(d, cloudData);
+          }
+        }
+      });
+    } catch (e) {
+      console.warn('Could not query previous checklists from Firestore:', e);
     }
   }
-  return null;
+
+  const sortedDatesDesc = Array.from(byDate.keys()).sort().reverse();
+  if (sortedDatesDesc.length === 0) {
+    return null;
+  }
+
+  // First, look for the most recent previous date that was explicitly modified by the user
+  for (const d of sortedDatesDesc) {
+    const candidate = byDate.get(d);
+    if (candidate && isChecklistCustomModified(candidate)) {
+      return candidate;
+    }
+  }
+
+  // Fallback to the immediate previous saved checklist (< targetDate)
+  return byDate.get(sortedDatesDesc[0]) || null;
 }
 
 /**

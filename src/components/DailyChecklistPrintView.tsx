@@ -69,6 +69,7 @@ export const DailyChecklistPrintView: React.FC<Props> = ({
               {report.items.map((item, index) => {
                 const isChecked = item.status === 'Checked';
                 const isEven = index % 2 === 1;
+                const cellPy = report.items.length > 32 ? 'py-[1.5px]' : 'py-[2.5px]';
 
                 return (
                   <tr
@@ -77,16 +78,16 @@ export const DailyChecklistPrintView: React.FC<Props> = ({
                       isEven ? 'bg-slate-50/70' : 'bg-white'
                     } ${!isChecked ? 'bg-amber-50/40' : ''}`}
                   >
-                    <td className="border-r border-slate-200 py-[2.5px] px-1 text-center font-bold text-slate-600">
+                    <td className={`border-r border-slate-200 ${cellPy} px-1 text-center font-bold text-slate-600`}>
                       {index + 1}
                     </td>
-                    <td className="border-r border-slate-200 py-[2.5px] px-2 text-left font-bold text-slate-900">
+                    <td className={`border-r border-slate-200 ${cellPy} px-2 text-left font-bold text-slate-900`}>
                       {item.taskList}
                     </td>
-                    <td className="border-r border-slate-200 py-[2.5px] px-1.5 text-center font-semibold text-slate-700">
+                    <td className={`border-r border-slate-200 ${cellPy} px-1.5 text-center font-semibold text-slate-700`}>
                       {item.personIncharge}
                     </td>
-                    <td className="border-r border-slate-200 py-[2.5px] px-1.5 text-center">
+                    <td className={`border-r border-slate-200 ${cellPy} px-1.5 text-center`}>
                       <span
                         className={`inline-flex items-center gap-1 font-bold text-[8.5px] px-1.5 py-[1px] rounded-xs border ${
                           isChecked
@@ -103,7 +104,7 @@ export const DailyChecklistPrintView: React.FC<Props> = ({
                         )}
                       </span>
                     </td>
-                    <td className="py-[2.5px] px-2 text-left font-medium text-slate-800 truncate max-w-[280px]">
+                    <td className={`${cellPy} px-2 text-left font-medium text-slate-800 truncate max-w-[280px]`}>
                       {item.remark || '-'}
                     </td>
                   </tr>

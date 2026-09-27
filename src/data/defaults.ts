@@ -60,9 +60,78 @@ export function createDefaultChecklistReport(dateStr?: string): DailyChecklistRe
     eveningShiftPic: '',
     items: JSON.parse(JSON.stringify(DEFAULT_CHECKLIST_ITEMS)),
     generalNotes: '',
+    isUserModified: false,
     createdAt: Date.now(),
     updatedAt: Date.now(),
     expiresAt: Date.now() + 60 * 24 * 60 * 60 * 1000, // 2 months (60 days) retention
+  };
+}
+
+/**
+ * Checks whether a checklist report has been customized/edited by the user
+ * (as opposed to being an untouched blank default or auto-inherited report).
+ */
+export function isChecklistCustomModified(report: DailyChecklistReport | null | undefined): boolean {
+  if (!report) return false;
+  if (typeof report.isUserModified === 'boolean') {
+    return report.isUserModified;
+  }
+  if (
+    report.morningShiftPic?.trim() ||
+    report.eveningShiftPic?.trim() ||
+    report.generalNotes?.trim()
+  ) {
+    return true;
+  }
+  if (!Array.isArray(report.items) || report.items.length !== DEFAULT_CHECKLIST_ITEMS.length) {
+    return true;
+  }
+  return report.items.some((it, idx) => {
+    const def = DEFAULT_CHECKLIST_ITEMS[idx];
+    if (!def) return true;
+    return (
+      Boolean(it.personIncharge?.trim()) ||
+      it.status !== def.status ||
+      it.remark !== def.remark ||
+      it.taskList !== def.taskList
+    );
+  });
+}
+
+/**
+ * Creates a DailyChecklistReport for a target date by inheriting the previous date's
+ * Morning Shift PIC, Evening Shift PIC, checklist items (including added/removed tasks, PICs, statuses, remarks),
+ * propertyName, and generalNotes.
+ */
+export function createChecklistFromPrevious(
+  dateStr: string,
+  previousReport?: DailyChecklistReport | null
+): DailyChecklistReport {
+  if (!previousReport) {
+    return createDefaultChecklistReport(dateStr);
+  }
+
+  const clonedItems: ChecklistItem[] = Array.isArray(previousReport.items)
+    ? JSON.parse(JSON.stringify(previousReport.items)).map((it: ChecklistItem, idx: number) => ({
+        ...it,
+        no: idx + 1,
+      }))
+    : JSON.parse(JSON.stringify(DEFAULT_CHECKLIST_ITEMS));
+
+  const now = Date.now();
+  return {
+    id: dateStr,
+    date: dateStr,
+    formattedDate: formatReportDate(dateStr),
+    propertyName: previousReport.propertyName || DEFAULT_PROPERTY_NAME,
+    morningShiftPic: previousReport.morningShiftPic || '',
+    eveningShiftPic: previousReport.eveningShiftPic || '',
+    items: clonedItems,
+    generalNotes: previousReport.generalNotes || '',
+    isUserModified: false,
+    createdAt: now,
+    updatedAt: now,
+    expiresAt: now + 60 * 24 * 60 * 60 * 1000,
   };
 }
 

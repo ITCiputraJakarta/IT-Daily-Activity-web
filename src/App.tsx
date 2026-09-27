@@ -6,7 +6,9 @@ import {
 } from './types';
 import {
   createDefaultActivityReport,
-  createDefaultChecklistReport
+  createDefaultChecklistReport,
+  createChecklistFromPrevious,
+  isChecklistCustomModified
 } from './data/defaults';
 import {
   loadTeamMembers,
@@ -19,9 +21,12 @@ import {
 } from './utils/logoStorage';
 import {
   saveActivityReport,
+  saveActivityReportLocalImmediate,
   loadActivityReport,
   saveChecklistReport,
+  saveChecklistReportLocalImmediate,
   loadChecklistReport,
+  loadPreviousChecklistReport,
   runAutoCleanupExpiredRecords,
   checkFirestoreConnection,
   saveAppLogoToCloud,
@@ -135,7 +140,10 @@ export default function App() {
             ...prev,
             prepared: newPrep,
             logBookActivities: newActs,
+            updatedAt: Date.now(),
           };
+          latestActRef.current = updatedRep;
+          saveActivityReportLocalImmediate(updatedRep);
           saveActivityReport(updatedRep).catch(console.error);
           return updatedRep;
         }
@@ -168,7 +176,11 @@ export default function App() {
             morningShiftPic: newMorning,
             eveningShiftPic: newEvening,
             items: newItems,
+            isUserModified: true,
+            updatedAt: Date.now(),
           };
+          latestCheckRef.current = updatedCheck;
+          saveChecklistReportLocalImmediate(updatedCheck);
           saveChecklistReport(updatedCheck).catch(console.error);
           return updatedCheck;
         }
@@ -180,12 +192,74 @@ export default function App() {
     }
   };
 
+  // Wrapper for Daily Activity edits: updates state, ref, and immediate local storage
+  const handleActivityChange = useCallback((updated: DailyActivityReport) => {
+    const nextReport: DailyActivityReport = {
+      ...updated,
+      updatedAt: Date.now(),
+    };
+    latestActRef.current = nextReport;
+    saveActivityReportLocalImmediate(nextReport);
+    setActivityReport(nextReport);
+  }, []);
+
+  // Wrapper for Daily Checklist edits: marks as user-modified, updates state, ref, and immediate local storage (plus forward propagation)
+  const handleChecklistChange = useCallback((updated: DailyChecklistReport) => {
+    const nextReport: DailyChecklistReport = {
+      ...updated,
+      isUserModified: true,
+      updatedAt: Date.now(),
+    };
+    latestCheckRef.current = nextReport;
+    saveChecklistReportLocalImmediate(nextReport);
+    setChecklistReport(nextReport);
+  }, []);
+
+  // Explicitly re-sync current date's checklist from previous date
+  const handleSyncFromPreviousDate = useCallback(async () => {
+    setIsSaving(true);
+    try {
+      const prevCheck = await loadPreviousChecklistReport(selectedDate);
+      if (prevCheck) {
+        const inherited = createChecklistFromPrevious(selectedDate, prevCheck);
+        latestCheckRef.current = inherited;
+        saveChecklistReportLocalImmediate(inherited);
+        setChecklistReport(inherited);
+        const res = await saveChecklistReport(inherited);
+        lastSavedCheckRef.current = JSON.stringify(inherited);
+        setIsDbOnline(!res.isLocalFallback);
+        setSaveStatusText(
+          res.isLocalFallback
+            ? '✓ Tersimpan di Cadangan Lokal (Offline)'
+            : '✓ Tersimpan otomatis ke Cloud'
+        );
+        setNotification(
+          `✓ Checklist tanggal ${selectedDate} mengikuti tanggal sebelumnya (${prevCheck.date})`
+        );
+      } else {
+        setNotification('Belum ada data checklist pada tanggal sebelumnya.');
+      }
+      setTimeout(() => setNotification(null), 3500);
+    } catch (err) {
+      console.error('Failed to sync from previous date:', err);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [selectedDate]);
+
   // Auto-save immediately to Firestore & Local Storage when image is uploaded or modified
   const handleAutoSaveActivity = useCallback(async (updated: DailyActivityReport) => {
     setIsSaving(true);
     setSaveStatusText('Menyimpan foto ke database...');
     try {
-      const res = await saveActivityReport(updated);
+      const nextReport: DailyActivityReport = {
+        ...updated,
+        updatedAt: Date.now(),
+      };
+      latestActRef.current = nextReport;
+      saveActivityReportLocalImmediate(nextReport);
+      const res = await saveActivityReport(nextReport);
+      lastSavedActRef.current = JSON.stringify(nextReport);
       setSaveStatusText(
         res.isLocalFallback
           ? '✓ Foto Tersimpan di Cadangan Lokal (Offline)'
@@ -264,17 +338,19 @@ export default function App() {
     const actJson = JSON.stringify(currentAct);
     const checkJson = JSON.stringify(currentCheck);
 
-    const actChanged = actJson !== lastSavedActRef.current;
-    const checkChanged = checkJson !== lastSavedCheckRef.current;
+    const actChanged = lastSavedActRef.current !== '' && actJson !== lastSavedActRef.current;
+    const checkChanged = lastSavedCheckRef.current !== '' && checkJson !== lastSavedCheckRef.current;
 
     if (actChanged || checkChanged) {
       setIsSaving(true);
       try {
         if (actChanged) {
+          saveActivityReportLocalImmediate(currentAct);
           await saveActivityReport(currentAct);
           lastSavedActRef.current = actJson;
         }
         if (checkChanged) {
+          saveChecklistReportLocalImmediate(currentCheck);
           await saveChecklistReport(currentCheck);
           lastSavedCheckRef.current = checkJson;
         }
@@ -297,7 +373,7 @@ export default function App() {
     [selectedDate, flushPendingSaves]
   );
 
-  // When selectedDate changes, load existing archive or initialize blank sheet
+  // When selectedDate changes, load existing archive or initialize blank activity & inherited checklist
   useEffect(() => {
     let isCancelled = false;
 
@@ -310,16 +386,17 @@ export default function App() {
       setSaveStatusText('Memuat laporan...');
 
       try {
-        const [loadedAct, loadedCheck] = await Promise.all([
+        const [loadedAct, loadedCheck, prevCheck] = await Promise.all([
           loadActivityReport(selectedDate),
           loadChecklistReport(selectedDate),
+          loadPreviousChecklistReport(selectedDate),
         ]);
 
         if (isCancelled) return;
 
+        // 1. Daily Activity Report: starts blank (3 empty items) if not yet saved for selectedDate
         let finalAct: DailyActivityReport;
         if (loadedAct) {
-          // If the loaded report has legacy dummy demo content, replace with clean 3-item blank sheet
           const isMockSample =
             loadedAct.logBookActivities.length === 4 &&
             loadedAct.logBookActivities[0]?.details === 'Speedtest at dian ballroom';
@@ -332,33 +409,78 @@ export default function App() {
           finalAct = createDefaultActivityReport(selectedDate);
         }
 
+        // 2. Daily Checklist Report: NOT empty on date change — follows the previous date by default!
+        // Only if selectedDate was explicitly edited by the user (isUserModified === true) does it keep its own custom state;
+        // otherwise it inherits Morning Shift, Evening Shift, and all checklist items/tasks from prevCheck and auto-saves.
         let finalCheck: DailyChecklistReport;
-        if (loadedCheck) {
+        let shouldAutoSaveChecklist = false;
+
+        const isExplicitlyEditedOnThisDate =
+          loadedCheck &&
+          (loadedCheck.isUserModified === true ||
+            (loadedCheck.isUserModified === undefined &&
+              isChecklistCustomModified(loadedCheck) &&
+              (!prevCheck || (loadedCheck.updatedAt || 0) >= (prevCheck.updatedAt || 0))));
+
+        if (isExplicitlyEditedOnThisDate && loadedCheck) {
+          finalCheck = loadedCheck;
+        } else if (prevCheck) {
+          finalCheck = createChecklistFromPrevious(selectedDate, prevCheck);
+          shouldAutoSaveChecklist = true;
+        } else if (loadedCheck) {
           finalCheck = loadedCheck;
         } else {
           finalCheck = createDefaultChecklistReport(selectedDate);
+          shouldAutoSaveChecklist = true;
         }
 
-        // Lock in references so we do not trigger auto-save right after loading
-        lastSavedActRef.current = JSON.stringify(finalAct);
-        lastSavedCheckRef.current = JSON.stringify(finalCheck);
+        // Lock in references before state update
+        const actStr = JSON.stringify(finalAct);
+        const checkStr = JSON.stringify(finalCheck);
+        lastSavedActRef.current = actStr;
+        lastSavedCheckRef.current = checkStr;
+        latestActRef.current = finalAct;
+        latestCheckRef.current = finalCheck;
         isDateLoadedRef.current = selectedDate;
 
         setActivityReport(finalAct);
         setChecklistReport(finalCheck);
-        setSaveStatusText('✓ Tersimpan otomatis ke Cloud');
 
-        if (loadedAct || loadedCheck) {
-          setNotification(`Arsip laporan tanggal ${selectedDate} dimuat`);
+        // Auto-save inherited checklist (and initial activity) so the date is persisted immediately
+        if (shouldAutoSaveChecklist) {
+          saveChecklistReportLocalImmediate(finalCheck);
+          const saveRes = await saveChecklistReport(finalCheck);
+          if (!isCancelled) {
+            setIsDbOnline(!saveRes.isLocalFallback);
+            setSaveStatusText(
+              saveRes.isLocalFallback
+                ? '✓ Tersimpan di Cadangan Lokal (Offline)'
+                : '✓ Tersimpan otomatis ke Cloud'
+            );
+          }
         } else {
-          setNotification(`Lembar kerja baru tanggal ${selectedDate} (3 Aktivitas kosong)`);
+          setSaveStatusText('✓ Tersimpan otomatis ke Cloud');
         }
-        setTimeout(() => setNotification(null), 3000);
+
+        if (!isCancelled) {
+          if (isExplicitlyEditedOnThisDate || loadedAct) {
+            setNotification(`Arsip laporan tanggal ${selectedDate} dimuat`);
+          } else if (prevCheck) {
+            setNotification(
+              `Tanggal ${selectedDate}: Checklist mengikuti default tanggal sebelumnya (${prevCheck.items.length} Task)`
+            );
+          } else {
+            setNotification(`Lembar kerja tanggal ${selectedDate} siap digunakan`);
+          }
+          setTimeout(() => setNotification(null), 3000);
+        }
       } catch (err) {
         console.error('Error loading report data:', err);
         setSaveStatusText('Mode Offline');
       } finally {
-        setIsSaving(false);
+        if (!isCancelled) {
+          setIsSaving(false);
+        }
       }
     }
 
@@ -400,7 +522,7 @@ export default function App() {
       } finally {
         setIsSaving(false);
       }
-    }, 600); // 600ms debounce on keystroke
+    }, 350); // 350ms fast debounce on keystroke
 
     return () => {
       if (actDebounceTimerRef.current) {
@@ -440,7 +562,7 @@ export default function App() {
       } finally {
         setIsSaving(false);
       }
-    }, 600); // 600ms debounce
+    }, 350); // 350ms fast debounce
 
     return () => {
       if (checkDebounceTimerRef.current) {
@@ -466,10 +588,14 @@ export default function App() {
           remark: formattedRemark,
         };
       }
-      return {
+      const next: DailyChecklistReport = {
         ...prev,
         items,
+        updatedAt: Date.now(),
       };
+      latestCheckRef.current = next;
+      saveChecklistReportLocalImmediate(next);
+      return next;
     });
   };
 
@@ -480,6 +606,7 @@ export default function App() {
 
     try {
       if (activeTab === 'activity') {
+        saveActivityReportLocalImmediate(activityReport);
         const res = await saveActivityReport(activityReport);
         lastSavedActRef.current = JSON.stringify(activityReport);
         setSaveStatusText(
@@ -489,8 +616,16 @@ export default function App() {
         );
         setIsDbOnline(!res.isLocalFallback);
       } else {
-        const res = await saveChecklistReport(checklistReport);
-        lastSavedCheckRef.current = JSON.stringify(checklistReport);
+        const checkToSave: DailyChecklistReport = {
+          ...checklistReport,
+          isUserModified: true,
+          updatedAt: Date.now(),
+        };
+        latestCheckRef.current = checkToSave;
+        setChecklistReport(checkToSave);
+        saveChecklistReportLocalImmediate(checkToSave);
+        const res = await saveChecklistReport(checkToSave);
+        lastSavedCheckRef.current = JSON.stringify(checkToSave);
         setSaveStatusText(
           res.isLocalFallback
             ? '✓ Tersimpan di Cadangan Lokal (Offline)'
@@ -591,6 +726,7 @@ export default function App() {
         saveStatusText={saveStatusText}
         isDbOnline={isDbOnline}
         onCheckDb={handleCheckDbConnection}
+        checklistTaskCount={checklistReport.items.length}
       />
 
       {/* Main Container */}
@@ -626,7 +762,7 @@ export default function App() {
             <span className="text-xs sm:text-sm font-bold text-slate-900">
               {activeTab === 'activity'
                 ? 'IT Daily Activity Report (2 Halaman A4)'
-                : 'IT Daily Checklist Activity (31 Task)'}
+                : `IT Daily Checklist Activity (${checklistReport.items.length} Task)`}
             </span>
             <span className="text-xs text-slate-600 font-medium">
               · {formatReportDate(selectedDate)}
@@ -652,7 +788,7 @@ export default function App() {
             {activeTab === 'activity' ? (
               <DailyActivityForm
                 report={activityReport}
-                onChange={setActivityReport}
+                onChange={handleActivityChange}
                 onSave={handleSave}
                 isSaving={isSaving}
                 teamMembers={teamMembers}
@@ -665,13 +801,14 @@ export default function App() {
             ) : (
               <DailyChecklistForm
                 report={checklistReport}
-                onChange={setChecklistReport}
+                onChange={handleChecklistChange}
                 onSave={handleSave}
                 isSaving={isSaving}
                 teamMembers={teamMembers}
                 onOpenTeamModal={() => setIsTeamModalOpen(true)}
                 customLogoUrl={customLogoUrl}
                 onOpenLogoModal={() => setIsLogoModalOpen(true)}
+                onSyncFromPreviousDate={handleSyncFromPreviousDate}
               />
             )}
           </div>

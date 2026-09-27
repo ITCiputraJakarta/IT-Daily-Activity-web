@@ -116,7 +116,7 @@ export const HistoryModal: React.FC<Props> = ({ isOpen, onClose, onSelectDate, c
         </div>
 
         <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-between items-center text-xs">
-          <span className="text-slate-500">Masa simpan dokumen: 30 hari</span>
+          <span className="text-slate-500">Masa simpan dokumen: 60 hari (2 bulan)</span>
           <button
             onClick={onClose}
             className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-lg font-medium"

@@ -40,6 +40,7 @@ interface Props {
   saveStatusText?: string;
   isDbOnline: boolean;
   onCheckDb: () => void;
+  checklistTaskCount: number;
 }
 
 export const Navbar: React.FC<Props> = ({
@@ -61,6 +62,7 @@ export const Navbar: React.FC<Props> = ({
   saveStatusText,
   isDbOnline,
   onCheckDb,
+  checklistTaskCount,
 }) => {
   const handlePrevDay = () => {
     setSelectedDate(addDaysToDateString(selectedDate, -1));
@@ -250,7 +252,7 @@ export const Navbar: React.FC<Props> = ({
               }`}
             >
               <CheckSquare className="w-4 h-4" />
-              2. Daily Checklist (31 Task)
+              2. Daily Checklist ({checklistTaskCount} Task)
             </button>
           </div>
 

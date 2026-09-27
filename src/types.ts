@@ -85,9 +85,10 @@ export interface DailyChecklistReport {
   eveningShiftPic: string;
   items: ChecklistItem[];
   generalNotes?: string;
+  isUserModified?: boolean; // true when explicitly edited on this date; false when inherited default from previous date
   createdAt: number;
   updatedAt: number;
-  expiresAt: number; // 30 days after creation
+  expiresAt: number; // 60 days after creation
 }
 
 export interface AppNotification {
