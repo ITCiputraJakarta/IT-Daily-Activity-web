@@ -9,9 +9,11 @@ export interface LogBookItem {
   id: string;
   no: number;
   details: string;
-  userClient: string;
+  userClient: string; // backwards compatibility: "[Name] - [Dept]" or "[Dept]"
+  clientName?: string; // Nama User/Client (misal: Pak Budi, Ibu Dewi, Reception)
+  clientDepartment?: string; // Departemen User/Client (misal: FO, Housekeeping, Accounting)
   status: 'Done' | 'Pending' | 'In Progress' | 'Cancelled';
-  pic: string;
+  pic: string; // Petugas IT (nama saja, misal: Ramdhani, Bagas, VELO)
   pictureUrl?: string;
   pictureCaption?: string;
 }

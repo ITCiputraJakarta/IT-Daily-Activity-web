@@ -25,7 +25,9 @@ import {
   runAutoCleanupExpiredRecords,
   checkFirestoreConnection,
   saveAppLogoToCloud,
-  loadAppLogoFromCloud
+  loadAppLogoFromCloud,
+  saveTeamMembersToCloud,
+  loadTeamMembersFromCloud
 } from './services/firebase';
 import { exportElementsToA4Pdf, triggerNativePrint } from './utils/pdfExport';
 import { formatReportDate, getTodayDateString } from './utils/imageUtils';
@@ -95,6 +97,7 @@ export default function App() {
   ) => {
     setTeamMembers(updated);
     saveTeamMembersToStorage(updated);
+    saveTeamMembersToCloud(updated);
 
     if (nameChange) {
       const { oldName, newName } = nameChange;
@@ -214,6 +217,14 @@ export default function App() {
       }
     });
 
+    // Check if cloud has synced team members
+    loadTeamMembersFromCloud().then((cloudMembers) => {
+      if (cloudMembers && cloudMembers.length > 0) {
+        setTeamMembers(cloudMembers);
+        saveTeamMembersToStorage(cloudMembers);
+      }
+    });
+
     runAutoCleanupExpiredRecords().then((res) => {
       const total = res.deletedActivities + res.deletedChecklists;
       if (total > 0) {
@@ -232,7 +243,15 @@ export default function App() {
       const loadedAct = await loadActivityReport(selectedDate);
       if (!isCancelled) {
         if (loadedAct) {
-          setActivityReport(loadedAct);
+          // If the loaded report has legacy dummy demo content, replace with clean 3-item blank sheet
+          const isMockSample =
+            loadedAct.logBookActivities.length === 4 &&
+            loadedAct.logBookActivities[0]?.details === 'Speedtest at dian ballroom';
+          if (isMockSample) {
+            setActivityReport(createDefaultActivityReport(selectedDate));
+          } else {
+            setActivityReport(loadedAct);
+          }
         } else {
           setActivityReport(createDefaultActivityReport(selectedDate));
         }

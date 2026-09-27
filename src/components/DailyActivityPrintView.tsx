@@ -92,9 +92,9 @@ export const DailyActivityPrintView: React.FC<Props> = ({
               <tr className="bg-slate-800 text-white font-bold text-center border-b border-slate-800">
                 <th className="py-1.5 px-1 w-8 border-r border-slate-700 text-center">No</th>
                 <th className="py-1.5 px-2.5 text-left border-r border-slate-700">Activities Details</th>
-                <th className="py-1.5 px-2 w-28 border-r border-slate-700">User / Client</th>
+                <th className="py-1.5 px-2 w-32 border-r border-slate-700">User / Client</th>
                 <th className="py-1.5 px-2 w-20 border-r border-slate-700">Status</th>
-                <th className="py-1.5 px-2 w-24">PIC</th>
+                <th className="py-1.5 px-2 w-24">PIC IT</th>
               </tr>
             </thead>
             <tbody>
@@ -106,11 +106,16 @@ export const DailyActivityPrintView: React.FC<Props> = ({
                       {index + 1}.
                     </td>
                     <td className="border-r border-slate-200 p-1.5 text-left align-top whitespace-pre-line font-bold text-slate-900">
-                      {act.details}
+                      {act.details || '-'}
                     </td>
                     <td className="border-r border-slate-200 p-1.5 text-center align-middle font-semibold text-slate-700">
-                      <span className="px-2 py-0.5 rounded bg-slate-200/80 text-[10px] inline-block font-bold">
-                        {act.userClient}
+                      {act.clientName ? (
+                        <div className="font-bold text-slate-900 text-[11px] leading-tight mb-0.5">
+                          {act.clientName}
+                        </div>
+                      ) : null}
+                      <span className="px-1.5 py-0.5 rounded bg-slate-200/90 text-[9.5px] inline-block font-semibold text-slate-800">
+                        {act.clientDepartment || act.userClient || 'IT'}
                       </span>
                     </td>
                     <td className="border-r border-slate-200 p-1.5 text-center align-middle">
@@ -119,7 +124,9 @@ export const DailyActivityPrintView: React.FC<Props> = ({
                       </span>
                     </td>
                     <td className="p-1.5 text-center align-middle font-bold uppercase text-slate-800">
-                      {act.pic}
+                      <span className="inline-block px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px] font-bold text-slate-900">
+                        {act.pic}
+                      </span>
                     </td>
                   </tr>
 

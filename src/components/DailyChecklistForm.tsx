@@ -270,11 +270,11 @@ export const DailyChecklistForm: React.FC<Props> = ({
               >
                 {activeMembers.map((m) => (
                   <option key={m.id} value={m.name}>
-                    {m.name} ({m.role || 'IT'})
+                    {m.name}
                   </option>
                 ))}
                 {!activeMembers.some((m) => m.name === report.morningShiftPic) && (
-                  <option value={report.morningShiftPic}>{report.morningShiftPic} (Kustom)</option>
+                  <option value={report.morningShiftPic}>{report.morningShiftPic}</option>
                 )}
               </select>
             </div>
@@ -303,11 +303,11 @@ export const DailyChecklistForm: React.FC<Props> = ({
               >
                 {activeMembers.map((m) => (
                   <option key={m.id} value={m.name}>
-                    {m.name} ({m.role || 'IT'})
+                    {m.name}
                   </option>
                 ))}
                 {!activeMembers.some((m) => m.name === report.eveningShiftPic) && (
-                  <option value={report.eveningShiftPic}>{report.eveningShiftPic} (Kustom)</option>
+                  <option value={report.eveningShiftPic}>{report.eveningShiftPic}</option>
                 )}
               </select>
             </div>

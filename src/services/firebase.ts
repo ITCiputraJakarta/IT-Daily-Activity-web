@@ -13,7 +13,7 @@ import {
   limit,
   onSnapshot
 } from 'firebase/firestore';
-import { DailyActivityReport, DailyChecklistReport } from '../types';
+import { DailyActivityReport, DailyChecklistReport, TeamMember } from '../types';
 
 export const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyCBuEIu1ITK40brP7SCWKQOQBdaMDFQx6M",
@@ -296,4 +296,43 @@ export async function loadAppLogoFromCloud(): Promise<string | null> {
   }
   return null;
 }
+
+/**
+ * Save IT PIC team members to Firestore so all devices/users share the exact same active team
+ */
+export async function saveTeamMembersToCloud(members: TeamMember[]): Promise<void> {
+  try {
+    const docRef = doc(db, 'app_settings', 'team_members');
+    await setDoc(
+      docRef,
+      {
+        members,
+        updatedAt: Date.now(),
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.warn('Could not save team members to Firestore:', err);
+  }
+}
+
+/**
+ * Load IT PIC team members from Firestore
+ */
+export async function loadTeamMembersFromCloud(): Promise<TeamMember[] | null> {
+  try {
+    const docRef = doc(db, 'app_settings', 'team_members');
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      if (Array.isArray(data?.members) && data.members.length > 0) {
+        return data.members as TeamMember[];
+      }
+    }
+  } catch (err) {
+    console.warn('Could not load team members from Firestore:', err);
+  }
+  return null;
+}
+
 
