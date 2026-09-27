@@ -22,7 +22,8 @@ interface Props {
   clientUsers: ClientUser[];
   onUpdateClientUsers: (
     users: ClientUser[],
-    userChange?: { oldName: string; newName: string; newDepartment: string }
+    userChange?: { oldName: string; newName: string; newDepartment: string },
+    deletedUserName?: string
   ) => void;
   onSwitchToPicModal?: () => void;
 }
@@ -50,6 +51,17 @@ export const UserManagementModal: React.FC<Props> = ({
   const [editingName, setEditingName] = useState('');
   const [editingDept, setEditingDept] = useState('');
   const [editingRoleOrExt, setEditingRoleOrExt] = useState('');
+
+  // Inline Delete Confirmation & Feedback Banner
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
+
+  const showFeedback = (msg: string) => {
+    setFeedbackMsg(msg);
+    setTimeout(() => {
+      setFeedbackMsg((prev) => (prev === msg ? null : prev));
+    }, 4500);
+  };
 
   const allDepartments = useMemo(() => {
     const set = new Set<string>(CLIENT_DEPARTMENTS);
@@ -159,16 +171,21 @@ export const UserManagementModal: React.FC<Props> = ({
 
     onUpdateClientUsers(updated, userChange);
     setEditingId(null);
+    showFeedback(`✓ User/Client "${newTrimmedName}" berhasil diperbarui.`);
   };
 
-  const handleDeleteUser = (id: string) => {
+  const handleConfirmDelete = (id: string) => {
     const target = clientUsers.find((u) => u.id === id);
-    if (confirm(`Hapus User/Client "${target?.name || ''}" dari daftar?`)) {
-      onUpdateClientUsers(clientUsers.filter((u) => u.id !== id));
-      if (editingId === id) {
-        setEditingId(null);
-      }
+    const deletedName = target?.name || '';
+    const updated = clientUsers.filter((u) => u.id !== id);
+    onUpdateClientUsers(updated, undefined, deletedName);
+    if (editingId === id) {
+      setEditingId(null);
     }
+    setConfirmDeleteId(null);
+    showFeedback(
+      `✓ User/Client "${deletedName}" dihapus. Data pada tanggal sebelumnya tetap aman & tidak berubah kecuali diedit.`
+    );
   };
 
   return (
@@ -218,6 +235,19 @@ export const UserManagementModal: React.FC<Props> = ({
 
         {/* Body */}
         <div className="p-4 overflow-y-auto space-y-4 flex-1">
+          {feedbackMsg && (
+            <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-300 text-blue-950 text-xs font-semibold flex items-center justify-between gap-2">
+              <span>{feedbackMsg}</span>
+              <button
+                type="button"
+                onClick={() => setFeedbackMsg(null)}
+                className="text-blue-700 hover:text-blue-950 font-bold"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           {/* Add User Form */}
           <form
             onSubmit={handleAddUser}
@@ -451,46 +481,74 @@ export const UserManagementModal: React.FC<Props> = ({
                       </div>
 
                       <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                        <button
-                          type="button"
-                          onClick={() => handleStartEdit(user)}
-                          className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg text-[10px] font-bold flex items-center gap-1 transition"
-                          title="Edit nama atau departemen user"
-                        >
-                          <Pencil className="w-3 h-3 text-amber-700" />
-                          <span>Edit</span>
-                        </button>
+                        {confirmDeleteId === user.id ? (
+                          <div className="flex items-center gap-1 bg-red-50 border border-red-200 px-2 py-1 rounded-lg">
+                            <span className="text-[10px] font-bold text-red-800 mr-1">
+                              Hapus?
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleConfirmDelete(user.id)}
+                              className="px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-bold transition"
+                            >
+                              Ya, Hapus
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteId(null)}
+                              className="px-2 py-0.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded text-[10px] font-semibold transition"
+                            >
+                              Batal
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setConfirmDeleteId(null);
+                                handleStartEdit(user);
+                              }}
+                              className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg text-[10px] font-bold flex items-center gap-1 transition"
+                              title="Edit nama atau departemen user"
+                            >
+                              <Pencil className="w-3 h-3 text-amber-700" />
+                              <span>Edit</span>
+                            </button>
 
-                        <button
-                          type="button"
-                          onClick={() => handleToggleActive(user.id)}
-                          className={`px-2.5 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 transition border ${
-                            user.isActive
-                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
-                              : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
-                          }`}
-                        >
-                          {user.isActive ? (
-                            <>
-                              <UserCheck className="w-3 h-3 text-emerald-700" />
-                              Aktif
-                            </>
-                          ) : (
-                            <>
-                              <UserX className="w-3 h-3 text-slate-500" />
-                              Nonaktif
-                            </>
-                          )}
-                        </button>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleActive(user.id)}
+                              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 transition border ${
+                                user.isActive
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                                  : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+                              }`}
+                            >
+                              {user.isActive ? (
+                                <>
+                                  <UserCheck className="w-3 h-3 text-emerald-700" />
+                                  Aktif
+                                </>
+                              ) : (
+                                <>
+                                  <UserX className="w-3 h-3 text-slate-500" />
+                                  Nonaktif
+                                </>
+                              )}
+                            </button>
 
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteUser(user.id)}
-                          title="Hapus User"
-                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteId(user.id)}
+                              title="Hapus User"
+                              className="px-2 py-1 text-red-600 hover:text-white bg-red-50 hover:bg-red-600 border border-red-200 rounded-lg text-[10px] font-bold flex items-center gap-1 transition"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              <span>Hapus</span>
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
                   )}

@@ -1,5 +1,6 @@
 import { ChecklistItem, DailyActivityReport, DailyChecklistReport } from '../types';
 import { formatReportDate, getTodayDateString } from '../utils/imageUtils';
+import { loadTeamMembers } from './teamMembers';
 import {
   SAMPLE_ERTFLIX_IMG,
   SAMPLE_PCCAFE_IMG,
@@ -137,6 +138,10 @@ export function createChecklistFromPrevious(
 
 export function createDefaultActivityReport(dateStr?: string): DailyActivityReport {
   const date = dateStr || getTodayDateString();
+  const activeMembers = loadTeamMembers().filter((m) => m.isActive);
+  const pickPic = (idx: number) =>
+    activeMembers.length > 0 ? activeMembers[idx % activeMembers.length].name : '';
+
   return {
     id: date,
     date,
@@ -154,7 +159,7 @@ export function createDefaultActivityReport(dateStr?: string): DailyActivityRepo
         clientDepartment: 'FO (Front Office)',
         userClient: 'FO (Front Office)',
         status: 'Done',
-        pic: 'Ramdhani',
+        pic: pickPic(0),
         pictureUrl: '',
       },
       {
@@ -165,7 +170,7 @@ export function createDefaultActivityReport(dateStr?: string): DailyActivityRepo
         clientDepartment: 'HK (Housekeeping)',
         userClient: 'HK (Housekeeping)',
         status: 'Done',
-        pic: 'Bagas',
+        pic: pickPic(1),
         pictureUrl: '',
       },
       {
@@ -176,7 +181,7 @@ export function createDefaultActivityReport(dateStr?: string): DailyActivityRepo
         clientDepartment: 'Engineering & Maintenance',
         userClient: 'Engineering & Maintenance',
         status: 'Done',
-        pic: 'VELO',
+        pic: pickPic(2),
         pictureUrl: '',
       },
     ],

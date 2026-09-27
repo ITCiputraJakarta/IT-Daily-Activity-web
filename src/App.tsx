@@ -14,8 +14,10 @@ import {
 import {
   loadTeamMembers,
   saveTeamMembersToStorage,
+  getTeamMembersLocalUpdatedAt,
   loadClientUsers,
-  saveClientUsersToStorage
+  saveClientUsersToStorage,
+  getClientUsersLocalUpdatedAt
 } from './data/teamMembers';
 import {
   getCustomLogo,
@@ -118,19 +120,92 @@ export default function App() {
     setTimeout(() => setNotification(null), 3500);
   }, []);
 
-  // Update team members and save to local storage (with cascading report updates on name edit)
+  // Update team members and save to local storage (with cascading report updates on current date only; past dates remain unchanged unless edited)
   const handleUpdateTeamMembers = (
     updated: TeamMember[],
-    nameChange?: { oldName: string; newName: string }
+    nameChange?: { oldName: string; newName: string },
+    deletedName?: string
   ) => {
+    const now = Date.now();
     setTeamMembers(updated);
-    saveTeamMembersToStorage(updated);
-    saveTeamMembersToCloud(updated);
+    saveTeamMembersToStorage(updated, now);
+    saveTeamMembersToCloud(updated, now);
+
+    if (deletedName) {
+      const activeRemaining = updated.filter((m) => m.isActive);
+      const fallbackPic = activeRemaining[0]?.name || '';
+
+      // Update ONLY the currently active date's Activity report (past dates < selectedDate are untouched)
+      setActivityReport((prev) => {
+        let changed = false;
+        const newActs = prev.logBookActivities.map((act) => {
+          if (act.pic.trim().toLowerCase() === deletedName.trim().toLowerCase()) {
+            changed = true;
+            return { ...act, pic: fallbackPic };
+          }
+          return act;
+        });
+        if (changed) {
+          const updatedRep = {
+            ...prev,
+            logBookActivities: newActs,
+            updatedAt: Date.now(),
+          };
+          latestActRef.current = updatedRep;
+          saveActivityReportLocalImmediate(updatedRep);
+          saveActivityReport(updatedRep).catch(console.error);
+          return updatedRep;
+        }
+        return prev;
+      });
+
+      // Update ONLY the currently active date's Checklist report (past dates < selectedDate are untouched)
+      setChecklistReport((prev) => {
+        let changed = false;
+        let newMorning = prev.morningShiftPic;
+        let newEvening = prev.eveningShiftPic;
+        if (prev.morningShiftPic.trim().toLowerCase() === deletedName.trim().toLowerCase()) {
+          newMorning = '';
+          changed = true;
+        }
+        if (prev.eveningShiftPic.trim().toLowerCase() === deletedName.trim().toLowerCase()) {
+          newEvening = '';
+          changed = true;
+        }
+        const newItems = prev.items.map((it) => {
+          if (it.personIncharge.trim().toLowerCase() === deletedName.trim().toLowerCase()) {
+            changed = true;
+            return { ...it, personIncharge: '' };
+          }
+          return it;
+        });
+        if (changed) {
+          const updatedCheck = {
+            ...prev,
+            morningShiftPic: newMorning,
+            eveningShiftPic: newEvening,
+            items: newItems,
+            isUserModified: true,
+            updatedAt: Date.now(),
+          };
+          latestCheckRef.current = updatedCheck;
+          saveChecklistReportLocalImmediate(updatedCheck);
+          saveChecklistReport(updatedCheck).catch(console.error);
+          return updatedCheck;
+        }
+        return prev;
+      });
+
+      setNotification(
+        `Petugas "${deletedName}" dihapus pada tanggal ini (${selectedDate}). Data tanggal sebelumnya tidak berubah.`
+      );
+      setTimeout(() => setNotification(null), 4000);
+    }
 
     if (nameChange) {
       const { oldName, newName } = nameChange;
 
-      // Cascade to active Daily Activity report
+      // Cascade to active Daily Activity report (current selectedDate only)
       setActivityReport((prev) => {
         let changed = false;
         let newPrep = prev.prepared;
@@ -160,7 +235,7 @@ export default function App() {
         return prev;
       });
 
-      // Cascade to active Daily Checklist report
+      // Cascade to active Daily Checklist report (current selectedDate only)
       setChecklistReport((prev) => {
         let changed = false;
         let newMorning = prev.morningShiftPic;
@@ -202,14 +277,52 @@ export default function App() {
     }
   };
 
-  // Update client users and save to local storage & cloud (with cascading report updates on user edit)
+  // Update client users and save to local storage & cloud (past dates remain unchanged unless edited)
   const handleUpdateClientUsers = (
     updated: ClientUser[],
-    userChange?: { oldName: string; newName: string; newDepartment: string }
+    userChange?: { oldName: string; newName: string; newDepartment: string },
+    deletedUserName?: string
   ) => {
+    const now = Date.now();
     setClientUsers(updated);
-    saveClientUsersToStorage(updated);
-    saveClientUsersToCloud(updated);
+    saveClientUsersToStorage(updated, now);
+    saveClientUsersToCloud(updated, now);
+
+    if (deletedUserName) {
+      // Update ONLY the currently active date's Activity report (past dates < selectedDate are untouched)
+      setActivityReport((prev) => {
+        let changed = false;
+        const newActs = prev.logBookActivities.map((act) => {
+          if ((act.clientName || '').trim().toLowerCase() === deletedUserName.trim().toLowerCase()) {
+            changed = true;
+            const dept = act.clientDepartment || 'FO (Front Office)';
+            return {
+              ...act,
+              clientName: '',
+              userClient: dept,
+            };
+          }
+          return act;
+        });
+        if (changed) {
+          const updatedRep = {
+            ...prev,
+            logBookActivities: newActs,
+            updatedAt: Date.now(),
+          };
+          latestActRef.current = updatedRep;
+          saveActivityReportLocalImmediate(updatedRep);
+          saveActivityReport(updatedRep).catch(console.error);
+          return updatedRep;
+        }
+        return prev;
+      });
+
+      setNotification(
+        `User/Client "${deletedUserName}" dihapus pada tanggal ini (${selectedDate}). Data tanggal sebelumnya tidak berubah.`
+      );
+      setTimeout(() => setNotification(null), 4000);
+    }
 
     if (userChange) {
       const { oldName, newName, newDepartment } = userChange;
@@ -361,19 +474,25 @@ export default function App() {
       }
     });
 
-    // Check if cloud has synced team members
-    loadTeamMembersFromCloud().then((cloudMembers) => {
-      if (cloudMembers && cloudMembers.length > 0) {
-        setTeamMembers(cloudMembers);
-        saveTeamMembersToStorage(cloudMembers);
+    // Check if cloud has synced team members (only apply if newer than local changes)
+    loadTeamMembersFromCloud().then((cloudData) => {
+      if (cloudData) {
+        const localUpdated = getTeamMembersLocalUpdatedAt();
+        if (cloudData.updatedAt > localUpdated) {
+          setTeamMembers(cloudData.members);
+          saveTeamMembersToStorage(cloudData.members, cloudData.updatedAt);
+        }
       }
     });
 
-    // Check if cloud has synced client users
-    loadClientUsersFromCloud().then((cloudUsers) => {
-      if (cloudUsers && cloudUsers.length > 0) {
-        setClientUsers(cloudUsers);
-        saveClientUsersToStorage(cloudUsers);
+    // Check if cloud has synced client users (only apply if newer than local changes)
+    loadClientUsersFromCloud().then((cloudData) => {
+      if (cloudData) {
+        const localUpdated = getClientUsersLocalUpdatedAt();
+        if (cloudData.updatedAt > localUpdated) {
+          setClientUsers(cloudData.users);
+          saveClientUsersToStorage(cloudData.users, cloudData.updatedAt);
+        }
       }
     });
 
@@ -461,28 +580,32 @@ export default function App() {
 
         // 1. Daily Activity Report: starts blank (3 empty items) if not yet saved for selectedDate
         let finalAct: DailyActivityReport;
+        let shouldSnapshotActivity = false;
         if (loadedAct) {
           const isMockSample =
             loadedAct.logBookActivities.length === 4 &&
             loadedAct.logBookActivities[0]?.details === 'Speedtest at dian ballroom';
           if (isMockSample) {
             finalAct = createDefaultActivityReport(selectedDate);
+            shouldSnapshotActivity = true;
           } else {
             finalAct = loadedAct;
           }
         } else {
           finalAct = createDefaultActivityReport(selectedDate);
+          shouldSnapshotActivity = true;
         }
 
-        // 2. Daily Checklist Report: NOT empty on date change — follows the previous date by default!
-        // Only if selectedDate was explicitly edited by the user (isUserModified === true) does it keep its own custom state;
-        // otherwise it inherits Morning Shift, Evening Shift, and all checklist items/tasks from prevCheck and auto-saves.
+        // 2. Daily Checklist Report:
+        // Past dates (< today) that already have a saved report ALWAYS preserve their historical snapshot unless edited.
         let finalCheck: DailyChecklistReport;
         let shouldAutoSaveChecklist = false;
+        const isPastDate = selectedDate < getTodayDateString();
 
         const isExplicitlyEditedOnThisDate =
           loadedCheck &&
-          (loadedCheck.isUserModified === true ||
+          (isPastDate ||
+            loadedCheck.isUserModified === true ||
             (loadedCheck.isUserModified === undefined &&
               isChecklistCustomModified(loadedCheck) &&
               (!prevCheck || (loadedCheck.updatedAt || 0) >= (prevCheck.updatedAt || 0))));
@@ -510,6 +633,11 @@ export default function App() {
 
         setActivityReport(finalAct);
         setChecklistReport(finalCheck);
+
+        // Snapshot initial activity report in localStorage so historical dates retain their PIC/User state
+        if (shouldSnapshotActivity) {
+          saveActivityReportLocalImmediate(finalAct);
+        }
 
         // Auto-save inherited checklist (and initial activity) so the date is persisted immediately
         if (shouldAutoSaveChecklist) {

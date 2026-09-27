@@ -38,14 +38,16 @@ export const DEFAULT_CLIENT_USERS: ClientUser[] = [
 ];
 
 const LS_TEAM_MEMBERS_KEY = 'hcj_it_team_members_v1';
+const LS_TEAM_MEMBERS_UPDATED_KEY = 'hcj_it_team_members_updated_at_v1';
 const LS_CLIENT_USERS_KEY = 'hcj_it_client_users_v1';
+const LS_CLIENT_USERS_UPDATED_KEY = 'hcj_it_client_users_updated_at_v1';
 
 export function loadTeamMembers(): TeamMember[] {
   try {
     const raw = localStorage.getItem(LS_TEAM_MEMBERS_KEY);
-    if (raw) {
+    if (raw !== null) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
+      if (Array.isArray(parsed)) {
         return parsed;
       }
     }
@@ -55,9 +57,19 @@ export function loadTeamMembers(): TeamMember[] {
   return DEFAULT_TEAM_MEMBERS;
 }
 
-export function saveTeamMembersToStorage(members: TeamMember[]): void {
+export function getTeamMembersLocalUpdatedAt(): number {
+  try {
+    const raw = localStorage.getItem(LS_TEAM_MEMBERS_UPDATED_KEY);
+    return raw ? parseInt(raw, 10) || 0 : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function saveTeamMembersToStorage(members: TeamMember[], updatedAt = Date.now()): void {
   try {
     localStorage.setItem(LS_TEAM_MEMBERS_KEY, JSON.stringify(members));
+    localStorage.setItem(LS_TEAM_MEMBERS_UPDATED_KEY, String(updatedAt));
   } catch (e) {
     console.warn('Failed to save team members to localStorage:', e);
   }
@@ -66,9 +78,9 @@ export function saveTeamMembersToStorage(members: TeamMember[]): void {
 export function loadClientUsers(): ClientUser[] {
   try {
     const raw = localStorage.getItem(LS_CLIENT_USERS_KEY);
-    if (raw) {
+    if (raw !== null) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
+      if (Array.isArray(parsed)) {
         return parsed;
       }
     }
@@ -78,9 +90,19 @@ export function loadClientUsers(): ClientUser[] {
   return DEFAULT_CLIENT_USERS;
 }
 
-export function saveClientUsersToStorage(users: ClientUser[]): void {
+export function getClientUsersLocalUpdatedAt(): number {
+  try {
+    const raw = localStorage.getItem(LS_CLIENT_USERS_UPDATED_KEY);
+    return raw ? parseInt(raw, 10) || 0 : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function saveClientUsersToStorage(users: ClientUser[], updatedAt = Date.now()): void {
   try {
     localStorage.setItem(LS_CLIENT_USERS_KEY, JSON.stringify(users));
+    localStorage.setItem(LS_CLIENT_USERS_UPDATED_KEY, String(updatedAt));
   } catch (e) {
     console.warn('Failed to save client users to localStorage:', e);
   }

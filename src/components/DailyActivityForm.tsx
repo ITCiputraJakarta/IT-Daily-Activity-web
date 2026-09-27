@@ -256,23 +256,17 @@ export const DailyActivityForm: React.FC<Props> = ({
   }, [report.logBookActivities, activitySearch, filterPic, filterDept, sortBy]);
 
   const handleResetToNewWorksheet = () => {
-    if (
-      confirm(
-        'Buka lembar kerja baru yang bersih untuk hari ini?\n• 3 Aktivitas IT Log Book kosong\n• Tanpa foto pada SARA, Traffic, dan Suhu Server\n• Input nilai MRTG dan Suhu Server dikosongkan'
-      )
-    ) {
-      const blank = createDefaultActivityReport(report.date);
-      onChange(blank);
-      if (onAutoSaveActivity) {
-        onAutoSaveActivity(blank);
-      }
+    const blank = createDefaultActivityReport(report.date);
+    onChange(blank);
+    if (onAutoSaveActivity) {
+      onAutoSaveActivity(blank);
     }
   };
 
   const addLogBookItem = () => {
     const nextNo = report.logBookActivities.length + 1;
     const defaultDept = 'FO (Front Office)';
-    const defaultPic = activeMembers[0]?.name || 'Ramdhani';
+    const defaultPic = activeMembers[0]?.name || '';
     const newItem: LogBookItem = {
       id: 'act-' + Date.now(),
       no: nextNo,
@@ -698,8 +692,18 @@ export const DailyActivityForm: React.FC<Props> = ({
                   </div>
                   <div className="space-y-1">
                     <select
-                      value={matchedClientUser?.id || ''}
-                      onChange={(e) => handleSelectClientUser(index, e.target.value)}
+                      value={
+                        matchedClientUser?.id ||
+                        (act.clientName?.trim() ? '__historical__' : '')
+                      }
+                      onChange={(e) => {
+                        if (e.target.value === '__historical__') return;
+                        if (e.target.value === '') {
+                          handleClientNameChange(index, '');
+                          return;
+                        }
+                        handleSelectClientUser(index, e.target.value);
+                      }}
                       className="w-full px-2 py-1 text-[11px] rounded-md border border-blue-200 bg-blue-50/60 text-blue-900 font-semibold focus:ring-1 focus:ring-blue-600"
                     >
                       <option value="">-- Pilih Cepat User --</option>
@@ -708,6 +712,11 @@ export const DailyActivityForm: React.FC<Props> = ({
                           {u.name} ({u.department.split(' ')[0]})
                         </option>
                       ))}
+                      {!matchedClientUser && act.clientName?.trim() && (
+                        <option value="__historical__">
+                          {act.clientName} (Tersimpan)
+                        </option>
+                      )}
                     </select>
                     <input
                       type="text"
@@ -782,13 +791,14 @@ export const DailyActivityForm: React.FC<Props> = ({
                     onChange={(e) => updateLogBookItem(index, { pic: e.target.value })}
                     className="w-full px-2.5 py-2 text-xs rounded-lg border border-emerald-300 focus:ring-2 focus:ring-emerald-600 bg-emerald-50/40 font-bold text-slate-800"
                   >
+                    <option value="">-- Pilih PIC IT --</option>
                     {activeMembers.map((m) => (
                       <option key={m.id} value={m.name}>
                         {m.name}
                       </option>
                     ))}
-                    {!activeMembers.some((m) => m.name === act.pic) && (
-                      <option value={act.pic}>{act.pic}</option>
+                    {act.pic && !activeMembers.some((m) => m.name === act.pic) && (
+                      <option value={act.pic}>{act.pic} (Tersimpan)</option>
                     )}
                   </select>
                 </div>

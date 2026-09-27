@@ -510,18 +510,14 @@ export async function loadAppLogoFromCloud(): Promise<string | null> {
 /**
  * Save IT PIC team members to Firestore so all devices/users share the exact same active team
  */
-export async function saveTeamMembersToCloud(members: TeamMember[]): Promise<void> {
+export async function saveTeamMembersToCloud(members: TeamMember[], updatedAt = Date.now()): Promise<void> {
   if (!db) return;
   try {
     const docRef = doc(db, 'app_settings', 'team_members');
-    await setDoc(
-      docRef,
-      {
-        members,
-        updatedAt: Date.now(),
-      },
-      { merge: true }
-    );
+    await setDoc(docRef, {
+      members,
+      updatedAt,
+    });
   } catch (err) {
     console.warn('Could not save team members to Firestore:', err);
   }
@@ -530,15 +526,18 @@ export async function saveTeamMembersToCloud(members: TeamMember[]): Promise<voi
 /**
  * Load IT PIC team members from Firestore
  */
-export async function loadTeamMembersFromCloud(): Promise<TeamMember[] | null> {
+export async function loadTeamMembersFromCloud(): Promise<{ members: TeamMember[]; updatedAt: number } | null> {
   if (!db) return null;
   try {
     const docRef = doc(db, 'app_settings', 'team_members');
     const snap = await getDoc(docRef);
     if (snap.exists()) {
       const data = snap.data();
-      if (Array.isArray(data?.members) && data.members.length > 0) {
-        return data.members as TeamMember[];
+      if (Array.isArray(data?.members)) {
+        return {
+          members: data.members as TeamMember[],
+          updatedAt: typeof data.updatedAt === 'number' ? data.updatedAt : 0,
+        };
       }
     }
   } catch (err) {
@@ -550,18 +549,14 @@ export async function loadTeamMembersFromCloud(): Promise<TeamMember[] | null> {
 /**
  * Save Client Users (User / Departemen) to Firestore separately from IT PICs
  */
-export async function saveClientUsersToCloud(users: ClientUser[]): Promise<void> {
+export async function saveClientUsersToCloud(users: ClientUser[], updatedAt = Date.now()): Promise<void> {
   if (!db) return;
   try {
     const docRef = doc(db, 'app_settings', 'client_users');
-    await setDoc(
-      docRef,
-      {
-        users,
-        updatedAt: Date.now(),
-      },
-      { merge: true }
-    );
+    await setDoc(docRef, {
+      users,
+      updatedAt,
+    });
   } catch (err) {
     console.warn('Could not save client users to Firestore:', err);
   }
@@ -570,15 +565,18 @@ export async function saveClientUsersToCloud(users: ClientUser[]): Promise<void>
 /**
  * Load Client Users (User / Departemen) from Firestore
  */
-export async function loadClientUsersFromCloud(): Promise<ClientUser[] | null> {
+export async function loadClientUsersFromCloud(): Promise<{ users: ClientUser[]; updatedAt: number } | null> {
   if (!db) return null;
   try {
     const docRef = doc(db, 'app_settings', 'client_users');
     const snap = await getDoc(docRef);
     if (snap.exists()) {
       const data = snap.data();
-      if (Array.isArray(data?.users) && data.users.length > 0) {
-        return data.users as ClientUser[];
+      if (Array.isArray(data?.users)) {
+        return {
+          users: data.users as ClientUser[],
+          updatedAt: typeof data.updatedAt === 'number' ? data.updatedAt : 0,
+        };
       }
     }
   } catch (err) {

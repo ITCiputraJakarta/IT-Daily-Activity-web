@@ -102,18 +102,12 @@ export const DailyChecklistForm: React.FC<Props> = ({
   };
 
   const resetToDefaultTemplate = () => {
-    if (
-      window.confirm(
-        `Buka lembar kerja checklist standar (${DEFAULT_CHECKLIST_ITEMS.length} Task) untuk hari ini?\n• ${DEFAULT_CHECKLIST_ITEMS.length} Task standar Hotel Ciputra Jakarta\n• Status Checked, remark bersih\n• Pilihan Morning & Evening Shift dikosongkan`
-      )
-    ) {
-      onChange({
-        ...report,
-        morningShiftPic: '',
-        eveningShiftPic: '',
-        items: JSON.parse(JSON.stringify(DEFAULT_CHECKLIST_ITEMS)),
-      });
-    }
+    onChange({
+      ...report,
+      morningShiftPic: '',
+      eveningShiftPic: '',
+      items: JSON.parse(JSON.stringify(DEFAULT_CHECKLIST_ITEMS)),
+    });
   };
 
   const assignPicToAll = (picName: string) => {
