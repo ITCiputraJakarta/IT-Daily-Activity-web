@@ -70,9 +70,10 @@ export interface DailyActivityReport {
   internetTraffic: InternetTraffic;
   serverTemperature: ServerTemperature;
   otherIssues: string;
+  isUserModified?: boolean; // true when user has filled in fields or uploaded photos
   createdAt: number;
   updatedAt: number;
-  expiresAt: number; // 30 days after creation
+  expiresAt: number; // 60 days after creation
 }
 
 export interface ChecklistItem {

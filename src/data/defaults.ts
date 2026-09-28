@@ -63,7 +63,7 @@ export function createDefaultChecklistReport(dateStr?: string): DailyChecklistRe
     generalNotes: '',
     isUserModified: false,
     createdAt: Date.now(),
-    updatedAt: Date.now(),
+    updatedAt: 0,
     expiresAt: Date.now() + 60 * 24 * 60 * 60 * 1000, // 2 months (60 days) retention
   };
 }
@@ -214,8 +214,58 @@ export function createDefaultActivityReport(dateStr?: string): DailyActivityRepo
       notes: '',
     },
     otherIssues: '-',
+    isUserModified: false,
     createdAt: Date.now(),
-    updatedAt: Date.now(),
+    updatedAt: 0,
     expiresAt: Date.now() + 60 * 24 * 60 * 60 * 1000, // 2 months (60 days) retention
   };
+}
+
+/**
+ * Checks whether a DailyActivityReport contains real user-filled data or uploaded photos
+ * (as opposed to an untouched blank default template).
+ */
+export function isActivityCustomModified(
+  report: DailyActivityReport | null | undefined
+): boolean {
+  if (!report) return false;
+  if (report.isUserModified === true) return true;
+
+  const hasLogBookData =
+    Array.isArray(report.logBookActivities) &&
+    (report.logBookActivities.length !== 3 ||
+      report.logBookActivities.some(
+        (act) =>
+          Boolean(act.details?.trim()) ||
+          Boolean(act.clientName?.trim()) ||
+          Boolean(act.pictureUrl?.trim()) ||
+          act.status !== 'Done'
+      ));
+
+  const hasSaraData =
+    Boolean(report.saraActivity?.screenshotUrl?.trim()) ||
+    Boolean(report.saraActivity?.notes?.trim());
+
+  const hasTrafficData =
+    Boolean(report.internetTraffic?.screenshotUrl?.trim()) ||
+    Boolean(report.internetTraffic?.maxIn?.trim()) ||
+    Boolean(report.internetTraffic?.avgIn?.trim()) ||
+    Boolean(report.internetTraffic?.currentIn?.trim());
+
+  const hasTempData =
+    Boolean(report.serverTemperature?.photoUrl?.trim()) ||
+    Boolean(report.serverTemperature?.currentTemp?.trim()) ||
+    Boolean(report.serverTemperature?.currentHum?.trim()) ||
+    Boolean(report.serverTemperature?.notes?.trim());
+
+  const hasOtherIssues =
+    Boolean(report.otherIssues?.trim()) && report.otherIssues.trim() !== '-';
+
+  return (
+    hasLogBookData ||
+    hasSaraData ||
+    hasTrafficData ||
+    hasTempData ||
+    hasOtherIssues
+  );
 }

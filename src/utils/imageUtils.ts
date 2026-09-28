@@ -40,7 +40,26 @@ export async function compressImage(file: File | Blob, maxWidth = 900, maxHeight
         ctx.drawImage(img, 0, 0, width, height);
 
         // Convert to compressed jpeg
-        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        let dataUrl = canvas.toDataURL('image/jpeg', quality);
+
+        // Adaptive step-down if base64 string is > 90KB so multiple photos per report never exceed Firestore 1MB limit or LocalStorage quota
+        let currentQ = quality;
+        let currentScale = 1.0;
+        while (dataUrl.length > 90000 && currentQ > 0.35) {
+          currentQ = Math.max(0.35, currentQ - 0.08);
+          currentScale *= 0.85;
+          const stepCanvas = document.createElement('canvas');
+          stepCanvas.width = Math.max(1, Math.round(width * currentScale));
+          stepCanvas.height = Math.max(1, Math.round(height * currentScale));
+          const stepCtx = stepCanvas.getContext('2d');
+          if (!stepCtx) break;
+          stepCtx.fillStyle = '#ffffff';
+          stepCtx.fillRect(0, 0, stepCanvas.width, stepCanvas.height);
+          stepCtx.drawImage(img, 0, 0, stepCanvas.width, stepCanvas.height);
+          dataUrl = stepCanvas.toDataURL('image/jpeg', currentQ);
+          if (currentQ <= 0.35) break;
+        }
+
         resolve(dataUrl);
       };
       img.onerror = (err) => reject(err);
