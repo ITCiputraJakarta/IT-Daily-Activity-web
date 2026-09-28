@@ -81,6 +81,7 @@ export interface ChecklistItem {
   no: number;
   taskList: string;
   personIncharge: string;
+  shift?: 'morning' | 'evening' | 'custom';
   status: 'Checked' | 'Pending' | 'Issue' | 'In Progress';
   remark: string;
 }
@@ -94,6 +95,8 @@ export interface DailyChecklistReport {
   eveningShiftPic: string;
   items: ChecklistItem[];
   generalNotes?: string;
+  waReportPhoto?: string; // Foto untuk WA Report (dari galeri atau live)
+  waReportPhotoCaption?: string; // Keterangan foto (default dari point no. 1)
   isUserModified?: boolean; // true when explicitly edited on this date; false when inherited default from previous date
   createdAt: number;
   updatedAt: number;

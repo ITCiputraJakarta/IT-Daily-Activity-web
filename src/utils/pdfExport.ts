@@ -103,3 +103,179 @@ export async function exportElementsToA4Pdf(
 export function triggerNativePrint(): void {
   window.print();
 }
+
+/**
+ * Exports a single DOM element (such as WA Report A4 / 1920x1080) as a high-resolution JPG image.
+ */
+export async function exportElementToJpg(
+  element: HTMLElement,
+  filename: string,
+  scale = 2
+): Promise<void> {
+  const images = Array.from(element.querySelectorAll('img'));
+  if (images.length > 0) {
+    await Promise.all(
+      images.map((img) => {
+        if (img.complete && img.naturalWidth > 0) {
+          return Promise.resolve();
+        }
+        return new Promise<void>((resolve) => {
+          img.onload = () => resolve();
+          img.onerror = () => resolve();
+          setTimeout(resolve, 2000);
+        });
+      })
+    );
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, 80));
+
+  const canvas = await html2canvas(element, {
+    scale,
+    useCORS: true,
+    allowTaint: true,
+    backgroundColor: '#ffffff',
+    logging: false,
+    ignoreElements: (el) => el.classList.contains('no-export'),
+  });
+
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.95)
+  );
+
+  const cleanFilename =
+    filename.endsWith('.jpg') || filename.endsWith('.jpeg')
+      ? filename
+      : `${filename}.jpg`;
+
+  if (!blob) {
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+    const link = document.createElement('a');
+    link.download = cleanFilename;
+    link.href = dataUrl;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    return;
+  }
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.download = cleanFilename;
+  link.href = url;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+/**
+ * Exports a single DOM element (such as WA Report A4 / 1920x1080) as a high-resolution PNG image.
+ */
+export async function exportElementToPng(
+  element: HTMLElement,
+  filename: string,
+  scale = 2
+): Promise<void> {
+  const images = Array.from(element.querySelectorAll('img'));
+  if (images.length > 0) {
+    await Promise.all(
+      images.map((img) => {
+        if (img.complete && img.naturalWidth > 0) {
+          return Promise.resolve();
+        }
+        return new Promise<void>((resolve) => {
+          img.onload = () => resolve();
+          img.onerror = () => resolve();
+          setTimeout(resolve, 2000);
+        });
+      })
+    );
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, 80));
+
+  const canvas = await html2canvas(element, {
+    scale,
+    useCORS: true,
+    allowTaint: true,
+    backgroundColor: '#ffffff',
+    logging: false,
+    ignoreElements: (el) => el.classList.contains('no-export'),
+  });
+
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob((b) => resolve(b), 'image/png')
+  );
+
+  const cleanFilename = filename.endsWith('.png') ? filename : `${filename}.png`;
+
+  if (!blob) {
+    const dataUrl = canvas.toDataURL('image/png');
+    const link = document.createElement('a');
+    link.download = cleanFilename;
+    link.href = dataUrl;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    return;
+  }
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.download = cleanFilename;
+  link.href = url;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+/**
+ * Copies a rendered DOM element directly into the system clipboard as a PNG image.
+ * This allows users to immediately paste (Ctrl+V) into WhatsApp Web or Desktop.
+ */
+export async function copyElementAsImageToClipboard(
+  element: HTMLElement,
+  scale = 2
+): Promise<boolean> {
+  try {
+    const images = Array.from(element.querySelectorAll('img'));
+    if (images.length > 0) {
+      await Promise.all(
+        images.map((img) => {
+          if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+          return new Promise<void>((resolve) => {
+            img.onload = () => resolve();
+            img.onerror = () => resolve();
+            setTimeout(resolve, 1500);
+          });
+        })
+      );
+    }
+
+    const canvas = await html2canvas(element, {
+      scale,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: '#ffffff',
+      logging: false,
+      ignoreElements: (el) => el.classList.contains('no-export'),
+    });
+
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob((b) => resolve(b), 'image/png')
+    );
+
+    if (blob && navigator.clipboard && typeof ClipboardItem !== 'undefined') {
+      await navigator.clipboard.write([
+        new ClipboardItem({ 'image/png': blob })
+      ]);
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.warn('Copy to clipboard failed:', err);
+    return false;
+  }
+}

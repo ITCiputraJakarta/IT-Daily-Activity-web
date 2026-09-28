@@ -19,12 +19,13 @@ import {
   Wifi,
   WifiOff,
   Check,
-  RefreshCw
+  RefreshCw,
+  MessageSquare
 } from 'lucide-react';
 
 interface Props {
-  activeTab: 'activity' | 'checklist';
-  setActiveTab: (tab: 'activity' | 'checklist') => void;
+  activeTab: 'activity' | 'checklist' | 'wareport';
+  setActiveTab: (tab: 'activity' | 'checklist' | 'wareport') => void;
   viewMode: 'edit' | 'preview';
   setViewMode: (mode: 'edit' | 'preview') => void;
   selectedDate: string;
@@ -267,6 +268,19 @@ export const Navbar: React.FC<Props> = ({
             >
               <CheckSquare className="w-4 h-4" />
               2. Daily Checklist ({checklistTaskCount} Task)
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('wareport')}
+              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                activeTab === 'wareport'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-700 hover:bg-slate-200/70'
+              }`}
+            >
+              <MessageSquare className="w-4 h-4 text-emerald-300" />
+              3. Wa report
             </button>
           </div>
 

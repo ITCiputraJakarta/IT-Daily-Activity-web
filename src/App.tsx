@@ -48,6 +48,7 @@ import { DailyActivityForm } from './components/DailyActivityForm';
 import { DailyActivityPrintView } from './components/DailyActivityPrintView';
 import { DailyChecklistForm } from './components/DailyChecklistForm';
 import { DailyChecklistPrintView } from './components/DailyChecklistPrintView';
+import { WaReportView } from './components/WaReportView';
 import { StorageCleanupBanner } from './components/StorageCleanupBanner';
 import { HistoryModal } from './components/HistoryModal';
 import { TeamManagementModal } from './components/TeamManagementModal';
@@ -63,7 +64,7 @@ import {
 
 export default function App() {
   const [selectedDate, setSelectedDate] = useState<string>(getTodayDateString());
-  const [activeTab, setActiveTab] = useState<'activity' | 'checklist'>('activity');
+  const [activeTab, setActiveTab] = useState<'activity' | 'checklist' | 'wareport'>('activity');
   const [viewMode, setViewMode] = useState<'edit' | 'preview'>('edit');
 
   // Custom Logo state (cached locally and synced with Cloud Firestore)
@@ -766,7 +767,7 @@ export default function App() {
 
   // Synchronize Internet Traffic (IN) from Activity Section 3 to Checklist item #2
   const handleSyncTrafficToChecklist = (mIn: string, aIn: string, cIn: string) => {
-    const formattedRemark = `MAX: ${mIn || '-'} Mbps | AVG: ${aIn || '-'} Mbps | CR: ${cIn || '-'} Mbps`;
+    const formattedRemark = `MAX: ${mIn || '-'} Mbps | AVG: ${aIn || '-'} Mbps | CURRENT: ${cIn || '-'} Mbps`;
     setChecklistReport((prev) => {
       const items = [...prev.items];
       let targetIdx = items.findIndex((it) =>
@@ -864,7 +865,7 @@ export default function App() {
         await exportElementsToA4Pdf([p1, p2], filename, (prog, text) => {
           setPdfProgress({ progress: prog, text });
         });
-      } else {
+      } else if (activeTab === 'checklist') {
         const pCheck = checklistPageRef.current;
         if (!pCheck) {
           throw new Error('Halaman checklist belum siap dirender.');
@@ -872,6 +873,16 @@ export default function App() {
 
         const filename = `Daily Checklist ${formattedDateForFile}.pdf`;
         await exportElementsToA4Pdf([pCheck], filename, (prog, text) => {
+          setPdfProgress({ progress: prog, text });
+        });
+      } else {
+        const waEl = document.getElementById('wa-report-card');
+        if (!waEl) {
+          throw new Error('Halaman WA Report belum siap.');
+        }
+
+        const filename = `WA Report ${formattedDateForFile}.pdf`;
+        await exportElementsToA4Pdf([waEl], filename, (prog, text) => {
           setPdfProgress({ progress: prog, text });
         });
       }
@@ -956,7 +967,9 @@ export default function App() {
             <span className="text-xs sm:text-sm font-bold text-slate-900">
               {activeTab === 'activity'
                 ? 'IT Daily Activity Report (2 Halaman A4)'
-                : `IT Daily Checklist Activity (${checklistReport.items.length} Task)`}
+                : activeTab === 'checklist'
+                ? `IT Daily Checklist Activity (${checklistReport.items.length} Task)`
+                : 'IT WA Report - 1 Halaman Compact (WhatsApp Ready)'}
             </span>
             <span className="text-xs text-slate-600 font-medium">
               · {formatReportDate(selectedDate)}
@@ -964,7 +977,11 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2 text-xs">
-            {viewMode === 'edit' ? (
+            {activeTab === 'wareport' ? (
+              <span className="text-emerald-800 bg-emerald-50 border border-emerald-200 font-bold px-2.5 py-1 rounded-md">
+                Mode WA Report (A4 / 1920×1080 Siap Unduh JPG)
+              </span>
+            ) : viewMode === 'edit' ? (
               <span className="text-slate-700 bg-slate-100 font-semibold px-2.5 py-1 rounded-md">
                 Mode Input Form (Mobile & Tablet Siap)
               </span>
@@ -976,8 +993,17 @@ export default function App() {
           </div>
         </div>
 
-        {/* Content Section (Interactive Edit or Preview) */}
-        {viewMode === 'edit' ? (
+        {/* Content Section (Interactive Edit, Preview, or WA Report) */}
+        {activeTab === 'wareport' ? (
+          <WaReportView
+            activityReport={activityReport}
+            checklistReport={checklistReport}
+            teamMembers={teamMembers}
+            customLogoUrl={customLogoUrl}
+            onUpdateChecklist={handleChecklistChange}
+            onUpdateActivity={handleActivityChange}
+          />
+        ) : viewMode === 'edit' ? (
           <div>
             {activeTab === 'activity' ? (
               <DailyActivityForm

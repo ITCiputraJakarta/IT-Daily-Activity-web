@@ -15,6 +15,17 @@ export const DailyActivityPrintView: React.FC<Props> = ({
   page2Ref,
   customLogoUrl,
 }) => {
+  const formatCleanTemp = (val?: string) => {
+    if (!val || !val.trim()) return '-';
+    const m = val.match(/[\d.]+/);
+    return m ? `${m[0]}°C` : '-';
+  };
+
+  const formatCleanHum = (val?: string) => {
+    if (!val || !val.trim()) return '-';
+    const m = val.match(/[\d.]+/);
+    return m ? `${m[0]}%` : '-';
+  };
   return (
     <div className="flex flex-col items-center gap-8 w-full">
       {/* ================= PAGE 1 ================= */}
@@ -287,7 +298,7 @@ export const DailyActivityPrintView: React.FC<Props> = ({
                 </span>
                 {(report.serverTemperature.currentTemp || report.serverTemperature.currentHum) && (
                   <span className="bg-emerald-50 text-emerald-900 border border-emerald-300 px-3 py-1 rounded-md font-extrabold text-xs">
-                    Actual: {report.serverTemperature.currentTemp || '-'} / {report.serverTemperature.currentHum || '-'}
+                    Actual: {formatCleanTemp(report.serverTemperature.currentTemp)} / {formatCleanHum(report.serverTemperature.currentHum)}
                   </span>
                 )}
               </div>
