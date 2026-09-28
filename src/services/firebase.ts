@@ -17,12 +17,12 @@ import { DailyActivityReport, DailyChecklistReport, TeamMember, ClientUser } fro
 import { createChecklistFromPrevious, isChecklistCustomModified } from '../data/defaults';
 
 export const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || ""
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyCBuEIu1ITK40brP7SCWKQOQBdaMDFQx6M",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "daily-ctivity-itbg.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "daily-ctivity-itbg",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "daily-ctivity-itbg.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "927845263252",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:927845263252:web:92522c80b69caf611a1181"
 };
 
 const isFirebaseConfigured = Boolean(firebaseConfig.apiKey && firebaseConfig.projectId);
@@ -50,17 +50,17 @@ export async function checkFirestoreConnection(): Promise<{ isOnline: boolean; m
   if (!db) {
     return {
       isOnline: false,
-      message: 'Mode Offline (Penyimpanan Lokal Aktif)',
+      message: 'Mode Offline (Firebase belum dikonfigurasi)',
     };
   }
   const start = performance.now();
   try {
     const testDocRef = doc(db, '_health_check', 'ping');
-    await setDoc(testDocRef, { timestamp: Date.now() }, { merge: true });
+    await setDoc(testDocRef, { timestamp: Date.now(), project: firebaseConfig.projectId }, { merge: true });
     const latencyMs = Math.round(performance.now() - start);
     return {
       isOnline: true,
-      message: `Terhubung ke Firebase Firestore (${latencyMs}ms)`,
+      message: `Terhubung ke Firebase Firestore (${firebaseConfig.projectId} · ${latencyMs}ms)`,
       latencyMs,
     };
   } catch (error: any) {
