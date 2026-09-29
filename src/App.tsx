@@ -371,6 +371,7 @@ export default function App() {
     };
     latestActRef.current = nextReport;
     saveActivityReportLocalImmediate(nextReport);
+    saveActivityReport(nextReport).catch(console.error);
     setActivityReport(nextReport);
   }, []);
 
@@ -383,6 +384,7 @@ export default function App() {
     };
     latestCheckRef.current = nextReport;
     saveChecklistReportLocalImmediate(nextReport);
+    saveChecklistReport(nextReport).catch(console.error);
     setChecklistReport(nextReport);
   }, []);
 

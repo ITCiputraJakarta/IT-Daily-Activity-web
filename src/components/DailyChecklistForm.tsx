@@ -48,7 +48,23 @@ export const DailyChecklistForm: React.FC<Props> = ({
   const [filterShift, setFilterShift] = useState<'ALL' | 'morning' | 'evening'>('ALL');
   const [filterPic, setFilterPic] = useState<string>('ALL');
   const [sortBy, setSortBy] = useState<ChecklistSortOption>('no-asc');
+  const [taskToDelete, setTaskToDelete] = useState<{ index: number; no: number; taskList: string } | null>(null);
+  const [checklistNotice, setChecklistNotice] = useState<string | null>(null);
+
+  const showChecklistNotice = (msg: string) => {
+    setChecklistNotice(msg);
+    setTimeout(() => setChecklistNotice(null), 3500);
+  };
+
   const activeMembers = teamMembers.filter((m) => m.isActive);
+
+  const handleConfirmRemoveTask = () => {
+    if (!taskToDelete) return;
+    const targetNo = taskToDelete.no;
+    removeItem(taskToDelete.index);
+    setTaskToDelete(null);
+    showChecklistNotice(`✓ Task #${targetNo} berhasil dihapus.`);
+  };
 
   const updateField = <K extends keyof DailyChecklistReport>(
     key: K,
@@ -678,9 +694,15 @@ export const DailyChecklistForm: React.FC<Props> = ({
                     <td className="py-2 px-2 text-center">
                       <button
                         type="button"
-                        onClick={() => removeItem(actualIndex)}
+                        onClick={() =>
+                          setTaskToDelete({
+                            index: actualIndex,
+                            no: item.no,
+                            taskList: item.taskList || `Task #${item.no}`,
+                          })
+                        }
                         title="Hapus baris"
-                        className="p-1 text-slate-400 hover:text-red-600 rounded hover:bg-red-50"
+                        className="p-1 text-slate-400 hover:text-red-600 rounded hover:bg-red-50 cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -757,9 +779,15 @@ export const DailyChecklistForm: React.FC<Props> = ({
 
                     <button
                       type="button"
-                      onClick={() => removeItem(actualIndex)}
+                      onClick={() =>
+                        setTaskToDelete({
+                          index: actualIndex,
+                          no: item.no,
+                          taskList: item.taskList || `Task #${item.no}`,
+                        })
+                      }
                       title="Hapus task"
-                      className="p-1 text-slate-400 hover:text-red-600 rounded"
+                      className="p-1 text-slate-400 hover:text-red-600 rounded cursor-pointer"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -865,6 +893,48 @@ export const DailyChecklistForm: React.FC<Props> = ({
           />
         </div>
       </div>
+
+      {/* Checklist Notification Toast */}
+      {checklistNotice && (
+        <div className="fixed bottom-5 right-5 z-50 p-3 bg-slate-900 text-white text-xs font-semibold rounded-xl flex items-center gap-2 shadow-2xl border border-slate-700 animate-in fade-in slide-in-from-bottom-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{checklistNotice}</span>
+        </div>
+      )}
+
+      {/* Delete Task Confirmation Modal (Yes / No) */}
+      {taskToDelete && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-12 h-12 rounded-full bg-red-50 text-red-600 flex items-center justify-center mx-auto mb-3">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-bold text-slate-900 text-center mb-1">
+              Hapus Task #{taskToDelete.no}?
+            </h3>
+            <p className="text-xs text-slate-600 text-center mb-5 leading-relaxed">
+              Apakah Anda yakin ingin menghapus item checklist <strong className="text-slate-800">"{taskToDelete.taskList}"</strong>? Nomor urut task lainnya akan otomatis diperbarui.
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setTaskToDelete(null)}
+                className="flex-1 py-2.5 px-3 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 font-semibold text-xs transition text-center cursor-pointer"
+              >
+                Tidak / Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmRemoveTask}
+                className="flex-1 py-2.5 px-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs transition shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Ya, Hapus
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -155,6 +155,11 @@ export function saveChecklistReportLocalImmediate(report: DailyChecklistReport):
   }
 }
 
+// Helper to remove any undefined properties so Firestore setDoc never throws Unsupported field value: undefined
+function sanitizeForFirestore<T>(data: T): T {
+  return JSON.parse(JSON.stringify(data));
+}
+
 /**
  * Save Daily Activity Report to Firestore (with localStorage fallback)
  */
@@ -180,7 +185,7 @@ export async function saveActivityReport(report: DailyActivityReport): Promise<{
 
   try {
     const docRef = doc(db, COLLECTION_ACTIVITIES, report.date);
-    await setDoc(docRef, cleanedReport);
+    await setDoc(docRef, sanitizeForFirestore(cleanedReport));
     return { success: true };
   } catch (error) {
     console.error('Firestore saveActivityReport error, using local fallback:', error);
@@ -252,14 +257,14 @@ export async function saveChecklistReport(report: DailyChecklistReport): Promise
 
   try {
     const docRef = doc(db, COLLECTION_CHECKLISTS, report.date);
-    await setDoc(docRef, cleanedReport);
+    await setDoc(docRef, sanitizeForFirestore(cleanedReport));
 
     // Also sync any forward-propagated unedited future dates to Firestore
     for (const futDate of propagatedDates) {
       const rawFut = localStorage.getItem(LS_PREFIX_CHECKLIST + futDate);
       if (rawFut) {
         const parsedFut = JSON.parse(rawFut) as DailyChecklistReport;
-        await setDoc(doc(db, COLLECTION_CHECKLISTS, futDate), parsedFut);
+        await setDoc(doc(db, COLLECTION_CHECKLISTS, futDate), sanitizeForFirestore(parsedFut));
       }
     }
 

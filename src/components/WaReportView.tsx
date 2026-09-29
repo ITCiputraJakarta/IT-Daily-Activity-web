@@ -54,10 +54,13 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [copiedSuccess, setCopiedSuccess] = useState<boolean>(false);
   const [notification, setNotification] = useState<string | null>(null);
+  const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null);
 
   const cardRef = useRef<HTMLDivElement | null>(null);
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
+
+  const [showDeletePhotoModal, setShowDeletePhotoModal] = useState<boolean>(false);
 
   // Item #1 from checklist (Unifi Controller)
   const item1 =
@@ -70,7 +73,7 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
     if (!file) return;
 
     try {
-      const compressed = await compressImage(file, 900, 900, 0.75);
+      const compressed = await compressImage(file, 1200, 1200, 0.85);
       const updated: DailyChecklistReport = {
         ...checklistReport,
         waReportPhoto: compressed,
@@ -78,25 +81,28 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
         updatedAt: Date.now(),
       };
       onUpdateChecklist(updated);
-      showNotice('✓ Foto berhasil diunggah untuk WA Report.');
+      showNotice('✓ Photo successfully uploaded for WA Report.');
     } catch (err) {
       console.error('Failed to process image:', err);
-      showNotice('Gagal memproses gambar. Silakan coba lagi.');
+      showNotice('Failed to process image. Please try again.');
     } finally {
       e.target.value = '';
     }
   };
 
-  const handleRemovePhoto = () => {
-    if (window.confirm('Hapus foto dari WA Report?')) {
-      const updated: DailyChecklistReport = {
-        ...checklistReport,
-        waReportPhoto: undefined,
-        updatedAt: Date.now(),
-      };
-      onUpdateChecklist(updated);
-      showNotice('Foto WA Report dihapus.');
-    }
+  const handleRequestRemovePhoto = () => {
+    setShowDeletePhotoModal(true);
+  };
+
+  const handleConfirmRemovePhoto = () => {
+    const updated: DailyChecklistReport = {
+      ...checklistReport,
+      waReportPhoto: '',
+      updatedAt: Date.now(),
+    };
+    onUpdateChecklist(updated);
+    setShowDeletePhotoModal(false);
+    showNotice('✓ Photo No. 4 (User Connected & AP) successfully deleted.');
   };
 
   const handleSyncItem1Remark = () => {
@@ -106,7 +112,7 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
       updatedAt: Date.now(),
     };
     onUpdateChecklist(updated);
-    showNotice('✓ Keterangan disinkronkan dari Checklist Point #1.');
+    showNotice('✓ Description synchronized from Checklist Task #1.');
   };
 
   const showNotice = (msg: string) => {
@@ -119,12 +125,12 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
     if (!cardRef.current || isExporting) return;
     setIsExporting(true);
     try {
-      const filename = `WA_Report_HCJ_${checklistReport.date || 'Laporan'}.jpg`;
+      const filename = `WA_Report_HCJ_${checklistReport.date || 'Report'}.jpg`;
       await exportElementToJpg(cardRef.current, filename, 2);
-      showNotice('✓ Gambar JPG WA Report berhasil diunduh!');
+      showNotice('✓ High-res JPG WA Report image successfully downloaded!');
     } catch (err) {
       console.error('Download JPG failed:', err);
-      showNotice('Gagal membuat file JPG. Silakan gunakan tombol cetak.');
+      showNotice('Failed to generate JPG. Please use the Print button.');
     } finally {
       setIsExporting(false);
     }
@@ -135,12 +141,12 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
     if (!cardRef.current || isExporting) return;
     setIsExporting(true);
     try {
-      const filename = `WA_Report_HCJ_${checklistReport.date || 'Laporan'}.png`;
+      const filename = `WA_Report_HCJ_${checklistReport.date || 'Report'}.png`;
       await exportElementToPng(cardRef.current, filename, 2);
-      showNotice('✓ Gambar PNG WA Report berhasil diunduh!');
+      showNotice('✓ High-res PNG WA Report image successfully downloaded!');
     } catch (err) {
       console.error('Download PNG failed:', err);
-      showNotice('Gagal membuat file PNG. Silakan coba format JPG.');
+      showNotice('Failed to generate PNG. Please try JPG format.');
     } finally {
       setIsExporting(false);
     }
@@ -154,14 +160,14 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
       const success = await copyElementAsImageToClipboard(cardRef.current, 2);
       if (success) {
         setCopiedSuccess(true);
-        showNotice('✓ Gambar tersalin ke Clipboard! Tinggal paste (Ctrl+V) di WhatsApp.');
+        showNotice('✓ Image copied to Clipboard! Paste (Ctrl+V) directly into WhatsApp.');
         setTimeout(() => setCopiedSuccess(false), 3000);
       } else {
-        showNotice('Browser tidak mendukung salin gambar langsung. Silakan gunakan tombol Download JPG/PNG.');
+        showNotice('Browser does not support direct image copying. Please use Download JPG/PNG.');
       }
     } catch (err) {
       console.error('Clipboard copy failed:', err);
-      showNotice('Gagal menyalin gambar. Gunakan tombol Download JPG atau PNG.');
+      showNotice('Failed to copy image. Please use Download JPG or PNG buttons.');
     } finally {
       setIsExporting(false);
     }
@@ -244,11 +250,11 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
               Tab 3
             </span>
             <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-tight">
-              WhatsApp Report (Format 1 Halaman Siap Cetak & Ekspor)
+              WhatsApp Report (Ready-to-Print & Export 1-Page Layout)
             </h2>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Checklist 31 Task, Internet Traffic (MRTG), Suhu Ruang Server, dan Foto Dokumentasi Point #1 tanpa tumpang-tindih.
+            31 Tasks Checklist, Internet Traffic (MRTG), Server Room Temperature, and Photo Documentation.
           </p>
         </div>
 
@@ -263,7 +269,7 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                   ? 'bg-white text-slate-900 shadow-2xs font-bold'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
-              title="Format A4 Standar Tegak (Portrait)"
+              title="A4 Standard Format (Portrait)"
             >
               Fit A4
             </button>
@@ -275,7 +281,7 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                   ? 'bg-white text-slate-900 shadow-2xs font-bold'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
-              title="Format Lebar 1920×1080 (Landscape)"
+              title="Wide Format 1920×1080 (Landscape)"
             >
               1920×1080 Fit
             </button>
@@ -286,7 +292,7 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
             type="button"
             onClick={handleCopyToClipboard}
             disabled={isExporting}
-            title="Salin gambar langsung ke clipboard untuk ditempel (Ctrl+V) di WhatsApp Web"
+            title="Copy high-res image directly to clipboard to paste (Ctrl+V) into WhatsApp"
             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-xs disabled:opacity-50"
           >
             {copiedSuccess ? (
@@ -294,7 +300,7 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
             ) : (
               <Copy className="w-4 h-4" />
             )}
-            <span>{copiedSuccess ? 'Tersalin!' : 'Salin ke WA'}</span>
+            <span>{copiedSuccess ? 'Copied!' : 'Copy to WA'}</span>
           </button>
 
           {/* Download as JPG */}
@@ -302,7 +308,7 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
             type="button"
             onClick={handleDownloadJpg}
             disabled={isExporting}
-            title="Download halaman ini sebagai file gambar JPG berkualitas tinggi"
+            title="Download this page as high-resolution JPG image"
             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition shadow-xs disabled:opacity-50"
           >
             {isExporting ? (
@@ -318,7 +324,7 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
             type="button"
             onClick={handleDownloadPng}
             disabled={isExporting}
-            title="Download halaman ini sebagai file gambar PNG beresolusi tinggi jernih"
+            title="Download this page as high-resolution lossless PNG image"
             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-xs font-bold transition shadow-xs disabled:opacity-50"
           >
             {isExporting ? (
@@ -329,15 +335,15 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
             <span>Download PNG</span>
           </button>
 
-          {/* Print / Cetak */}
+          {/* Print */}
           <button
             type="button"
             onClick={handlePrint}
-            title="Buka dialog cetak browser (Print ke printer fisik atau Save to PDF)"
+            title="Open browser print dialog (Print to physical printer or Save as PDF)"
             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-800 text-white rounded-lg text-xs font-bold transition shadow-xs"
           >
             <Printer className="w-4 h-4" />
-            <span>Cetak</span>
+            <span>Print</span>
           </button>
         </div>
       </div>
@@ -402,7 +408,7 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                 HOTEL CIPUTRA JAKARTA · IT DEPARTMENT
               </p>
               <p className="text-[10px] text-slate-600 font-semibold mt-0.5">
-                Tanggal:{' '}
+                Date:{' '}
                 <span className="text-slate-900 font-bold">
                   {checklistReport.formattedDate || checklistReport.date}
                 </span>
@@ -435,7 +441,7 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
           {/* ================================================================= */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
             
-            {/* CARD 2: INTERNET TRAFFIC (MRTG / TRAFFIC ANALYSIS) - WITHOUT WORD 'EVENING' */}
+            {/* CARD 2: INTERNET TRAFFIC (MRTG / TRAFFIC ANALYSIS) */}
             <div className="border border-blue-200 rounded-lg p-2.5 bg-blue-50/30 flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between pb-1 mb-1.5 border-b border-blue-200">
@@ -448,24 +454,37 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                       Internet Traffic (MRTG)
                     </h2>
                   </div>
-                  <span className="text-[8.5px] font-bold text-blue-800 bg-blue-100 px-1 py-0.2 rounded">
+                  <span className="text-[8.5px] font-bold text-blue-800 bg-blue-100 px-1.5 py-0.5 rounded">
                     Traffic Analysis
                   </span>
                 </div>
 
-                {/* MRTG Screenshot */}
+                {/* MRTG Screenshot - Zoomed & Large Display */}
                 {activityReport.internetTraffic?.screenshotUrl ? (
-                  <div className="mb-2 rounded border border-slate-200 overflow-hidden bg-white h-[85px] flex items-center justify-center">
+                  <div
+                    onClick={() =>
+                      setPreviewImage({
+                        url: activityReport.internetTraffic!.screenshotUrl!,
+                        title: 'Internet Traffic (MRTG) - Full View',
+                      })
+                    }
+                    className="mb-2 rounded border border-slate-200 overflow-hidden bg-white h-[145px] flex items-center justify-center relative group cursor-pointer"
+                    title="Click to zoom / view full image"
+                  >
                     <img
                       src={activityReport.internetTraffic.screenshotUrl}
                       alt="MRTG Traffic Analysis"
-                      className="w-full h-full object-contain"
+                      className="w-full h-full object-cover object-center transition-transform duration-300 group-hover:scale-105"
                     />
+                    <div className="no-export absolute bottom-1 right-1 bg-black/60 text-white text-[8px] px-1.5 py-0.5 rounded font-medium opacity-0 group-hover:opacity-100 transition flex items-center gap-0.5">
+                      <span>🔍 Zoom</span>
+                    </div>
                   </div>
                 ) : (
-                  <div className="mb-2 h-[85px] rounded border border-dashed border-blue-200 bg-white flex flex-col items-center justify-center text-center p-1 text-[9.5px] text-slate-400">
-                    <Wifi className="w-4 h-4 text-blue-300 mb-0.5" />
-                    <span>Grafik MRTG sinkron dari Daily Activity</span>
+                  <div className="mb-2 h-[145px] rounded border border-dashed border-blue-200 bg-white flex flex-col items-center justify-center text-center p-2 text-[9.5px] text-slate-400">
+                    <Wifi className="w-6 h-6 text-blue-300 mb-1" />
+                    <span className="font-semibold text-slate-600">MRTG Traffic Graph</span>
+                    <span className="text-[8.5px] text-slate-400 mt-0.5">Synchronized from Daily Activity</span>
                   </div>
                 )}
 
@@ -500,12 +519,12 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
 
               {activityReport.internetTraffic?.notes && (
                 <p className="text-[8.5px] text-slate-600 mt-1.5 font-medium italic border-t border-blue-100 pt-1">
-                  Ket: {activityReport.internetTraffic.notes}
+                  Note: {activityReport.internetTraffic.notes}
                 </p>
               )}
             </div>
 
-            {/* CARD 3: SERVER TEMPERATURE (SUHU & KELEMBAPAN RUANG SERVER) */}
+            {/* CARD 3: SERVER TEMPERATURE (SERVER ROOM TEMPERATURE & HUMIDITY) */}
             <div className="border border-emerald-200 rounded-lg p-2.5 bg-emerald-50/30 flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between pb-1 mb-1.5 border-b border-emerald-200">
@@ -518,15 +537,17 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                       Server Room Temperature
                     </h2>
                   </div>
-                  <span className="text-[8.5px] font-bold text-emerald-800 bg-emerald-100 px-1 py-0.2 rounded flex items-center gap-0.5">
+                  <span className="text-[8.5px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded flex items-center gap-0.5">
                     <CheckCircle2 className="w-2.5 h-2.5" /> Normal
                   </span>
                 </div>
 
-                {/* Metrics without double °C and % */}
+                {/* Metrics with single unit */}
                 <div className="grid grid-cols-2 gap-1.5 text-center mb-1.5">
                   <div className="bg-white border border-slate-200 rounded p-1.5">
-                    <span className="text-[8.5px] font-semibold text-slate-500 block">Suhu Ruang</span>
+                    <span className="text-[8.5px] font-semibold text-slate-500 block uppercase">
+                      Room Temp
+                    </span>
                     <div className="text-base sm:text-lg font-bold text-slate-900 leading-tight">
                       {formatTempValue(activityReport.serverTemperature?.currentTemp)}
                     </div>
@@ -536,7 +557,9 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                   </div>
 
                   <div className="bg-white border border-slate-200 rounded p-1.5">
-                    <span className="text-[8.5px] font-semibold text-slate-500 block">Kelembapan</span>
+                    <span className="text-[8.5px] font-semibold text-slate-500 block uppercase">
+                      Humidity
+                    </span>
                     <div className="text-base sm:text-lg font-bold text-slate-900 leading-tight">
                       {formatHumValue(activityReport.serverTemperature?.currentHum)}
                     </div>
@@ -546,25 +569,43 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                   </div>
                 </div>
 
-                {/* Evidence photo if uploaded in Daily Activity */}
-                {activityReport.serverTemperature?.photoUrl && (
-                  <div className="rounded border border-slate-200 overflow-hidden bg-white h-[45px] flex items-center justify-center">
+                {/* Evidence photo - Zoomed & Large Display */}
+                {activityReport.serverTemperature?.photoUrl ? (
+                  <div
+                    onClick={() =>
+                      setPreviewImage({
+                        url: activityReport.serverTemperature!.photoUrl!,
+                        title: 'Server Room Thermometer - Full View',
+                      })
+                    }
+                    className="rounded border border-slate-200 overflow-hidden bg-white h-[110px] flex items-center justify-center relative group cursor-pointer"
+                    title="Click to zoom / view full image"
+                  >
                     <img
                       src={activityReport.serverTemperature.photoUrl}
-                      alt="Termometer Ruang Server"
-                      className="w-full h-full object-contain"
+                      alt="Server Room Thermometer"
+                      className="w-full h-full object-cover object-center transition-transform duration-300 group-hover:scale-105"
                     />
+                    <div className="no-export absolute bottom-1 right-1 bg-black/60 text-white text-[8px] px-1.5 py-0.5 rounded font-medium opacity-0 group-hover:opacity-100 transition flex items-center gap-0.5">
+                      <span>🔍 Zoom</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-[110px] rounded border border-dashed border-emerald-200 bg-white/70 flex flex-col items-center justify-center text-center p-2 text-[9.5px] text-slate-400">
+                    <Thermometer className="w-5 h-5 text-emerald-300 mb-0.5" />
+                    <span className="font-semibold text-slate-600">Thermometer Photo</span>
+                    <span className="text-[8.5px] text-slate-400">Recorded from Server Room Check</span>
                   </div>
                 )}
               </div>
 
-              <div className="text-[8.5px] text-emerald-900 font-medium bg-emerald-100/60 p-1 rounded mt-1.5 flex items-center justify-between">
-                <span>AC Server: Running Normal</span>
-                <span className="font-bold">Aman</span>
+              <div className="text-[8.5px] text-emerald-900 font-medium bg-emerald-100/60 p-1.5 rounded mt-1.5 flex items-center justify-between">
+                <span>Server AC: Normal Operation</span>
+                <span className="font-bold text-emerald-800">Optimal</span>
               </div>
             </div>
 
-            {/* CARD 4: USER CONNECTED & AP */}
+            {/* CARD 4: USER CONNECTED & AP (HEADER MATCHED WITH OTHER CARDS) */}
             <div className="border border-amber-200 rounded-lg p-2.5 bg-amber-50/30 flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between pb-1 mb-1.5 border-b border-amber-200">
@@ -572,92 +613,108 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                     <span className="w-4 h-4 rounded-full bg-amber-600 text-white font-bold text-[10px] flex items-center justify-center">
                       4
                     </span>
-                    <h2 className="text-[11px] font-medium text-slate-800 uppercase tracking-tight flex items-center gap-1">
-                      <Camera className="w-3 h-3 text-amber-600" />
+                    <h2 className="text-[11px] font-bold text-slate-900 uppercase tracking-tight flex items-center gap-1">
+                      <Wifi className="w-3 h-3 text-amber-600" />
                       User Connected & AP
                     </h2>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleSyncItem1Remark}
-                    title="Sinkronkan teks keterangan dengan remark checklist point #1"
-                    className="no-export text-[8.5px] font-medium text-amber-800 hover:underline flex items-center gap-0.5"
-                  >
-                    <RefreshCw className="w-2.5 h-2.5" /> Sinkron #1
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[8.5px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
+                      Access Points
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleSyncItem1Remark}
+                      title="Sync remark from Task #1"
+                      className="no-export text-[8.5px] font-semibold text-amber-800 hover:text-amber-950 bg-amber-100/80 hover:bg-amber-200 px-1.5 py-0.5 rounded transition flex items-center gap-0.5"
+                    >
+                      <RefreshCw className="w-2.5 h-2.5" /> Sync
+                    </button>
+                  </div>
                 </div>
 
-                {/* Photo Display / Upload Prompt */}
+                {/* Photo Display - Zoomed & Large Display */}
                 {checklistReport.waReportPhoto ? (
-                  <div className="relative group rounded border border-slate-200 overflow-hidden bg-white h-[85px] flex items-center justify-center mb-1.5">
+                  <div className="relative group rounded border border-slate-200 overflow-hidden bg-white h-[145px] flex items-center justify-center mb-1.5">
                     <img
                       src={checklistReport.waReportPhoto}
                       alt="User Connected & AP"
-                      className="w-full h-full object-contain"
+                      onClick={() =>
+                        setPreviewImage({
+                          url: checklistReport.waReportPhoto!,
+                          title: 'User Connected & AP Documentation - Full View',
+                        })
+                      }
+                      className="w-full h-full object-cover object-center transition-transform duration-300 group-hover:scale-105 cursor-pointer"
+                      title="Click to zoom / view full image"
                     />
                     {/* Hover actions */}
-                    <div className="no-export absolute top-1 right-1 flex items-center gap-1 bg-black/60 rounded p-0.5">
+                    <div className="no-export absolute top-1 right-1 flex items-center gap-1 bg-black/70 backdrop-blur-xs rounded p-1 shadow-xs">
                       <button
                         type="button"
                         onClick={() => galleryInputRef.current?.click()}
-                        title="Ganti Foto (Galeri)"
+                        title="Change Photo (Gallery)"
                         className="p-1 text-white hover:text-amber-300 transition"
                       >
-                        <Upload className="w-3 h-3" />
+                        <Upload className="w-3.5 h-3.5" />
                       </button>
                       <button
                         type="button"
                         onClick={() => cameraInputRef.current?.click()}
-                        title="Ambil Foto Live (Kamera)"
+                        title="Take Live Photo (Camera)"
                         className="p-1 text-white hover:text-amber-300 transition"
                       >
-                        <Camera className="w-3 h-3" />
+                        <Camera className="w-3.5 h-3.5" />
                       </button>
                       <button
                         type="button"
-                        onClick={handleRemovePhoto}
-                        title="Hapus Foto"
+                        onClick={handleRequestRemovePhoto}
+                        title="Delete Photo No. 4"
                         className="p-1 text-white hover:text-red-400 transition"
                       >
-                        <Trash2 className="w-3 h-3" />
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
+                    </div>
+                    <div className="no-export absolute bottom-1 right-1 bg-black/60 text-white text-[8px] px-1.5 py-0.5 rounded font-medium opacity-0 group-hover:opacity-100 transition flex items-center gap-0.5 pointer-events-none">
+                      <span>🔍 Zoom</span>
                     </div>
                   </div>
                 ) : (
-                  <div className="mb-1.5 h-[85px] rounded border-2 border-dashed border-amber-300 bg-white/80 flex flex-col items-center justify-center p-1 text-center">
-                    <p className="text-[9px] font-medium text-slate-700 mb-1">
-                      Upload Foto (Kamera / Galeri)
+                  <div className="mb-1.5 h-[145px] rounded border-2 border-dashed border-amber-300 bg-white/80 flex flex-col items-center justify-center p-2 text-center">
+                    <Camera className="w-6 h-6 text-amber-500 mb-1" />
+                    <p className="text-[10px] font-semibold text-slate-700 mb-2">
+                      Upload Documentation (Camera / Gallery)
                     </p>
-                    <div className="no-export flex items-center gap-1.5">
+                    <div className="no-export flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() => galleryInputRef.current?.click()}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded text-[9px] font-medium transition border border-slate-300"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded text-[9.5px] font-semibold transition border border-slate-300 shadow-2xs"
                       >
-                        <Upload className="w-2.5 h-2.5 text-amber-700" />
-                        Galeri
+                        <Upload className="w-3 h-3 text-amber-700" />
+                        Gallery
                       </button>
                       <button
                         type="button"
                         onClick={() => cameraInputRef.current?.click()}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded text-[9px] font-medium transition"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded text-[9.5px] font-semibold transition shadow-2xs"
                       >
-                        <Camera className="w-2.5 h-2.5" />
-                        Live Foto
+                        <Camera className="w-3 h-3" />
+                        Live Camera
                       </button>
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* Keterangan Di Bawah Foto: font konsisten tidak bbold */}
+              {/* Description Box below photo */}
               <div className="bg-amber-50/70 border border-amber-200 rounded p-1.5 text-slate-800">
                 <div className="flex items-center justify-between mb-0.5 text-[8.5px]">
-                  <span className="font-normal text-amber-900 flex items-center gap-0.5">
+                  <span className="font-semibold text-amber-900 flex items-center gap-0.5">
                     <span>📌</span> Task #1 ({item1?.taskList || 'Unifi Controller'})
                   </span>
-                  <span className="font-normal text-amber-700">
-                    Keterangan
+                  <span className="font-medium text-amber-700">
+                    Remark / Description
                   </span>
                 </div>
                 <div className="text-[9px] font-normal text-slate-700 bg-white px-2 py-1 rounded border border-amber-200 truncate">
@@ -669,7 +726,7 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
           </div>
 
           {/* ================================================================= */}
-          {/* SECTION 1: KESELURUHAN DAILY CHECKLIST (31 ITEMS COMPACT & CLEAN) */}
+          {/* SECTION 1: DAILY TASK MONITORING (31 TASKS) */}
           {/* ================================================================= */}
           <div className="border border-slate-300 rounded-lg p-2.5 bg-white">
             <div className="flex items-center justify-between pb-1 mb-2 border-b-2 border-amber-500">
@@ -678,20 +735,20 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                   1
                 </span>
                 <h2 className="text-xs font-bold text-slate-900 uppercase tracking-tight">
-                  Daily Checklist Monitoring (31 Tasks Lengkap)
+                  Daily Task Monitoring (31 Tasks)
                 </h2>
               </div>
               <div className="flex items-center gap-1.5 text-[9px] font-bold">
-                <span className="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded">
+                <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded">
                   ✓ {checkedTasks} Checked
                 </span>
                 {issueTasks > 0 && (
-                  <span className="px-1.5 py-0.2 bg-red-100 text-red-800 rounded">
+                  <span className="px-1.5 py-0.5 bg-red-100 text-red-800 rounded">
                     ⚠ {issueTasks} Issue
                   </span>
                 )}
                 {pendingTasks > 0 && (
-                  <span className="px-1.5 py-0.2 bg-amber-100 text-amber-800 rounded">
+                  <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded">
                     ⏳ {pendingTasks} Pending
                   </span>
                 )}
@@ -710,7 +767,7 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                       <th className="py-1 px-1.5 text-left w-40">Task List</th>
                       <th className="py-1 px-1 text-center w-16">Shift / PIC</th>
                       <th className="py-1 px-1 text-center w-12">Status</th>
-                      <th className="py-1 px-1.5 text-left">Remark (Keterangan)</th>
+                      <th className="py-1 px-1.5 text-left">Remark / Description</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -733,7 +790,7 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                         </td>
                         <td className="py-0.5 px-1 text-center">
                           <span
-                            className={`inline-block px-1 py-0.2 rounded text-[7.5px] font-bold ${
+                            className={`inline-block px-1 py-0.5 rounded text-[7.5px] font-bold ${
                               item.shift === 'evening'
                                 ? 'bg-indigo-100 text-indigo-900'
                                 : 'bg-amber-100 text-amber-900'
@@ -746,7 +803,7 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                         </td>
                         <td className="py-0.5 px-1 text-center">
                           <span
-                            className={`inline-block px-1 py-0.2 rounded text-[7.5px] font-bold ${
+                            className={`inline-block px-1 py-0.5 rounded text-[7.5px] font-bold ${
                               item.status === 'Checked'
                                 ? 'bg-emerald-100 text-emerald-800'
                                 : item.status === 'Issue'
@@ -764,7 +821,7 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                             }`}
                             title={item.remark}
                           >
-                            {item.remark || '✓'}
+                            {item.remark || '✓ OK'}
                           </span>
                         </td>
                       </tr>
@@ -782,7 +839,7 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                       <th className="py-1 px-1.5 text-left w-40">Task List</th>
                       <th className="py-1 px-1 text-center w-16">Shift / PIC</th>
                       <th className="py-1 px-1 text-center w-12">Status</th>
-                      <th className="py-1 px-1.5 text-left">Remark (Keterangan)</th>
+                      <th className="py-1 px-1.5 text-left">Remark / Description</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -805,7 +862,7 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                         </td>
                         <td className="py-0.5 px-1 text-center">
                           <span
-                            className={`inline-block px-1 py-0.2 rounded text-[7.5px] font-bold ${
+                            className={`inline-block px-1 py-0.5 rounded text-[7.5px] font-bold ${
                               item.shift === 'evening'
                                 ? 'bg-indigo-100 text-indigo-900'
                                 : 'bg-amber-100 text-amber-900'
@@ -818,7 +875,7 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                         </td>
                         <td className="py-0.5 px-1 text-center">
                           <span
-                            className={`inline-block px-1 py-0.2 rounded text-[7.5px] font-bold ${
+                            className={`inline-block px-1 py-0.5 rounded text-[7.5px] font-bold ${
                               item.status === 'Checked'
                                 ? 'bg-emerald-100 text-emerald-800'
                                 : item.status === 'Issue'
@@ -836,7 +893,7 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                             }`}
                             title={item.remark}
                           >
-                            {item.remark || '✓'}
+                            {item.remark || '✓ OK'}
                           </span>
                         </td>
                       </tr>
@@ -850,7 +907,7 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
             {/* Checklist Footer Info */}
             <div className="mt-2 pt-1.5 border-t border-slate-200 flex items-center justify-between text-[8.5px] text-slate-500">
               <span className="font-semibold text-slate-700">
-                Total 31 Task Checklist Harian Terdata Lengkap
+                Total 31 Daily Tasks Monitored & Verified
               </span>
               <span className="font-bold text-emerald-700">
                 Hotel Ciputra Jakarta · IT Daily System Verification
@@ -861,11 +918,96 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
           {/* BOTTOM SIGN-OFF / FOOTER */}
           <div className="mt-2 pt-1 border-t border-slate-300 flex items-center justify-between text-[9px] text-slate-500">
             <div>
-              <span className="font-semibold text-slate-700">Hotel Ciputra Jakarta</span> · Tim IT Support & Networking
+              <span className="font-semibold text-slate-700">Hotel Ciputra Jakarta</span> · IT Support & Networking Team
             </div>
           </div>
         </div>
       </div>
+
+      {/* Lightbox / Zoom Preview Modal (Excluded from export) */}
+      {previewImage && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex flex-col items-center justify-center p-4 no-export"
+          onClick={() => setPreviewImage(null)}
+        >
+          <div
+            className="max-w-4xl w-full bg-slate-900 border border-slate-700 rounded-xl overflow-hidden shadow-2xl flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between bg-slate-950/80">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-amber-400 uppercase tracking-wide">
+                  Preview & Zoom
+                </span>
+                <span className="text-slate-300 text-xs font-semibold">
+                  · {previewImage.title}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewImage(null)}
+                className="text-slate-400 hover:text-white px-2 py-0.5 rounded-md hover:bg-slate-800 text-base font-bold transition"
+                title="Close (Esc)"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-2 sm:p-4 bg-black flex items-center justify-center max-h-[80vh] overflow-auto">
+              <img
+                src={previewImage.url}
+                alt={previewImage.title}
+                className="max-h-[75vh] w-auto max-w-full object-contain rounded shadow-lg"
+              />
+            </div>
+            <div className="px-4 py-2 border-t border-slate-800 bg-slate-950/80 flex items-center justify-between text-[11px] text-slate-400">
+              <span>Klik di luar atau tombol ✕ untuk menutup</span>
+              <button
+                type="button"
+                onClick={() => setPreviewImage(null)}
+                className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-white rounded text-xs font-semibold transition"
+              >
+                Tutup Preview
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal for No. 4 Photo (Yes / No) */}
+      {showDeletePhotoModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200">
+            <div className="w-12 h-12 rounded-full bg-red-50 text-red-600 flex items-center justify-center mx-auto mb-3">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-bold text-slate-900 text-center mb-1">
+              Delete Photo No. 4?
+            </h3>
+            <p className="text-xs text-slate-600 text-center mb-5 leading-relaxed">
+              Apakah Anda yakin ingin menghapus foto dokumentasi <strong className="text-slate-800">No. 4 (User Connected &amp; AP)</strong> dari WhatsApp Report?
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowDeletePhotoModal(false)}
+                className="flex-1 py-2.5 px-3 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 font-semibold text-xs transition text-center cursor-pointer"
+              >
+                Tidak / Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmRemovePhoto}
+                className="flex-1 py-2.5 px-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs transition shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Ya, Hapus
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
