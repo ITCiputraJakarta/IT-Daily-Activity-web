@@ -50,7 +50,8 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
   onUpdateChecklist,
   onUpdateActivity,
 }) => {
-  const [layoutMode, setLayoutMode] = useState<'a4' | 'wide'>('a4');
+  const [layoutMode, setLayoutMode] = useState<'a4' | 'wide'>('wide');
+  const [mobileFit, setMobileFit] = useState<boolean>(false);
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [copiedSuccess, setCopiedSuccess] = useState<boolean>(false);
   const [notification, setNotification] = useState<string | null>(null);
@@ -259,6 +260,34 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap justify-end">
+          {/* Mobile Preview View Toggle: 100% Scroll vs Fit Layar */}
+          <div className="flex sm:hidden items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => setMobileFit(false)}
+              className={`px-2 py-1 rounded-md transition ${
+                !mobileFit
+                  ? 'bg-white text-slate-900 shadow-2xs font-bold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title="Ukuran Asli 100% (Geser ke samping)"
+            >
+              100% Scroll
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobileFit(true)}
+              className={`px-2 py-1 rounded-md transition ${
+                mobileFit
+                  ? 'bg-white text-slate-900 shadow-2xs font-bold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title="Pas Layar HP (Overview)"
+            >
+              Fit Layar
+            </button>
+          </div>
+
           {/* Layout Toggle: A4 vs 1920x1080 */}
           <div className="bg-slate-100 p-0.5 rounded-lg border border-slate-200 flex items-center text-xs font-semibold">
             <button
@@ -378,24 +407,40 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
         className="hidden"
       />
 
+      {/* Info banner for mobile / tablet devices */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-1.5 flex items-center justify-between text-[11px] text-blue-900 no-export">
+        <div className="flex items-center gap-1.5 font-medium">
+          <span className="text-blue-700 font-bold">💡 Format Unduhan:</span>
+          <span>
+            Unduhan JPG &amp; PNG pada HP/tablet otomatis berformat <strong>Desktop 1920×1080 Fit</strong> (3 kolom MRTG/Suhu/AP &amp; 2 kolom checklist berdampingan).
+          </span>
+        </div>
+      </div>
+
       {/* Main Single-Page A4 / 1920x1080 Container to be captured into JPG/PNG */}
-      <div className="flex justify-center overflow-x-auto pb-6">
+      <div className="w-full overflow-x-auto pb-6 flex justify-start lg:justify-center">
         <div
           ref={cardRef}
           id="wa-report-card"
-          className={`bg-white text-slate-900 border border-slate-300 shadow-md p-4 sm:p-5 transition-all ${
+          data-layout={layoutMode}
+          className={`bg-white text-slate-900 border border-slate-300 shadow-md p-4 sm:p-5 transition-all shrink-0 ${
             layoutMode === 'a4'
-              ? 'w-full max-w-[900px] min-h-[1200px] rounded-lg'
-              : 'w-full max-w-[1240px] min-h-[760px] rounded-lg'
-          }`}
+              ? 'w-[900px] min-w-[900px] min-h-[1200px] rounded-lg'
+              : 'w-[1240px] min-w-[1240px] min-h-[760px] rounded-lg'
+          } ${mobileFit && !isExporting ? 'origin-top-left' : ''}`}
           style={{
             fontFamily: 'Arial, Helvetica, sans-serif',
+            transform:
+              mobileFit && !isExporting && typeof window !== 'undefined' && window.innerWidth < (layoutMode === 'a4' ? 930 : 1270)
+                ? `scale(${Math.max(0.25, Math.min(1, (window.innerWidth - 32) / (layoutMode === 'a4' ? 900 : 1240)))})`
+                : 'none',
+            transformOrigin: 'top left',
           }}
         >
           {/* TOP HEADER */}
           <div className="border-b-2 border-slate-800 pb-2.5 mb-3 flex items-center justify-between gap-3">
             {/* Logo */}
-            <div className="w-32 sm:w-36 flex items-center shrink-0">
+            <div className="w-36 flex items-center shrink-0">
               <CiputraLogo size="md" customLogoUrl={customLogoUrl} />
             </div>
 
@@ -439,7 +484,7 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
           {/* ================================================================= */}
           {/* SECTION 2, 3, & 4: THREE CLEAN TOP CARDS (EQUAL HEIGHT & NON-OVERLAPPING) */}
           {/* ================================================================= */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+          <div className="grid grid-cols-3 gap-3 mb-3">
             
             {/* CARD 2: INTERNET TRAFFIC (MRTG / TRAFFIC ANALYSIS) */}
             <div className="border border-blue-200 rounded-lg p-2.5 bg-blue-50/30 flex flex-col justify-between">
@@ -756,7 +801,7 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
             </div>
 
             {/* 2-Column Full Width Balanced Tables (No Overlap, Spacious Columns) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[9px]">
+            <div className="grid grid-cols-2 gap-3 text-[9px]">
               
               {/* Column 1: Items 1 to 16 */}
               <div className="border border-slate-200 rounded overflow-hidden">
