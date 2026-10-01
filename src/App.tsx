@@ -377,8 +377,10 @@ export default function App() {
 
   // Wrapper for Daily Checklist edits: marks as user-modified, updates state, ref, and immediate local storage (plus forward propagation)
   const handleChecklistChange = useCallback((updated: DailyChecklistReport) => {
+    const item1 = updated.items.find((it) => it.no === 1 || it.taskList.toLowerCase().includes('unifi'));
     const nextReport: DailyChecklistReport = {
       ...updated,
+      waReportPhotoCaption: item1 ? item1.remark : updated.waReportPhotoCaption,
       isUserModified: true,
       updatedAt: Date.now(),
     };

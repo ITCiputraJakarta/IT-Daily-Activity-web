@@ -129,6 +129,7 @@ export function createChecklistFromPrevious(
     eveningShiftPic: previousReport.eveningShiftPic || '',
     items: clonedItems,
     generalNotes: previousReport.generalNotes || '',
+    waReportPhotoCaption: clonedItems[0]?.remark || previousReport.waReportPhotoCaption || '',
     isUserModified: false,
     createdAt: now,
     updatedAt: now,

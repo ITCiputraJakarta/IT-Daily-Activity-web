@@ -80,6 +80,15 @@ export const DailyChecklistForm: React.FC<Props> = ({
     const newItems = [...report.items];
     if (index >= 0 && index < newItems.length) {
       newItems[index] = { ...newItems[index], ...partial };
+      const isTask1 = newItems[index].no === 1 || newItems[index].taskList.toLowerCase().includes('unifi');
+      if (isTask1 && partial.remark !== undefined) {
+        onChange({
+          ...report,
+          items: newItems,
+          waReportPhotoCaption: partial.remark,
+        });
+        return;
+      }
       updateField('items', newItems);
     }
   };

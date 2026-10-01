@@ -63,10 +63,12 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
 
   const [showDeletePhotoModal, setShowDeletePhotoModal] = useState<boolean>(false);
 
-  // Item #1 from checklist (Unifi Controller)
-  const item1 =
-    checklistReport.items.find((it) => it.no === 1) || checklistReport.items[0];
-  const item1Remark = item1?.remark || 'No issue';
+  // Item #1 from checklist (Unifi Controller / User Connected & AP)
+  const item1Index = checklistReport.items.findIndex(
+    (it) => it.no === 1 || it.taskList.toLowerCase().includes('unifi')
+  );
+  const item1 = item1Index !== -1 ? checklistReport.items[item1Index] : checklistReport.items[0];
+  const item1Remark = item1?.remark ?? checklistReport.waReportPhotoCaption ?? '';
 
   // Handle Photo upload from Gallery or Camera/Live
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -75,10 +77,11 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
 
     try {
       const compressed = await compressImage(file, 1200, 1200, 0.85);
+      const currentRemark = item1?.remark || checklistReport.waReportPhotoCaption || '';
       const updated: DailyChecklistReport = {
         ...checklistReport,
         waReportPhoto: compressed,
-        waReportPhotoCaption: item1Remark,
+        waReportPhotoCaption: currentRemark,
         updatedAt: Date.now(),
       };
       onUpdateChecklist(updated);
@@ -106,14 +109,23 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
     showNotice('✓ Photo No. 4 (User Connected & AP) successfully deleted.');
   };
 
-  const handleSyncItem1Remark = () => {
+  // Two-way instant sync: changing remark in Card 4 immediately updates Task #1 in checklist & waReportPhotoCaption
+  const handleItem1RemarkChange = (newRemark: string) => {
+    const newItems = [...checklistReport.items];
+    const targetIdx = item1Index !== -1 ? item1Index : 0;
+    if (newItems[targetIdx]) {
+      newItems[targetIdx] = {
+        ...newItems[targetIdx],
+        remark: newRemark,
+      };
+    }
     const updated: DailyChecklistReport = {
       ...checklistReport,
-      waReportPhotoCaption: item1Remark,
+      items: newItems,
+      waReportPhotoCaption: newRemark,
       updatedAt: Date.now(),
     };
     onUpdateChecklist(updated);
-    showNotice('✓ Description synchronized from Checklist Task #1.');
   };
 
   const showNotice = (msg: string) => {
@@ -667,14 +679,9 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                     <span className="text-[8.5px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
                       Access Points
                     </span>
-                    <button
-                      type="button"
-                      onClick={handleSyncItem1Remark}
-                      title="Sync remark from Task #1"
-                      className="no-export text-[8.5px] font-semibold text-amber-800 hover:text-amber-950 bg-amber-100/80 hover:bg-amber-200 px-1.5 py-0.5 rounded transition flex items-center gap-0.5"
-                    >
-                      <RefreshCw className="w-2.5 h-2.5" /> Sync
-                    </button>
+                    <span className="text-[8.5px] font-bold text-emerald-800 bg-emerald-100/90 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                      <CheckCircle2 className="w-2.5 h-2.5 text-emerald-700" /> Auto Sync
+                    </span>
                   </div>
                 </div>
 
@@ -752,19 +759,24 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                 )}
               </div>
 
-              {/* Description Box below photo */}
+              {/* Description Box below photo - Instant two-way auto sync with Task #1 */}
               <div className="bg-amber-50/70 border border-amber-200 rounded p-1.5 text-slate-800">
-                <div className="flex items-center justify-between mb-0.5 text-[8.5px]">
+                <div className="flex items-center justify-between mb-1 text-[8.5px]">
                   <span className="font-semibold text-amber-900 flex items-center gap-0.5">
                     <span>📌</span> Task #1 ({item1?.taskList || 'Unifi Controller'})
                   </span>
-                  <span className="font-medium text-amber-700">
-                    Remark / Description
+                  <span className="font-bold text-emerald-800 bg-emerald-100/90 px-1.5 py-0.5 rounded text-[8px] flex items-center gap-0.5">
+                    <CheckCircle2 className="w-2.5 h-2.5 text-emerald-700" /> Auto Synced
                   </span>
                 </div>
-                <div className="text-[9px] font-normal text-slate-700 bg-white px-2 py-1 rounded border border-amber-200 truncate">
-                  {checklistReport.waReportPhotoCaption || item1Remark}
-                </div>
+                <input
+                  type="text"
+                  value={item1?.remark ?? checklistReport.waReportPhotoCaption ?? ''}
+                  onChange={(e) => handleItem1RemarkChange(e.target.value)}
+                  placeholder="Keterangan Task #1 (Unifi Controller / AP)..."
+                  title="Edit langsung Remark Task #1 (otomatis tersinkronisasi dengan Daily Checklist)"
+                  className="w-full text-[9px] font-medium text-slate-800 bg-white px-2 py-1 rounded border border-amber-300 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 focus:outline-none transition shadow-2xs"
+                />
               </div>
             </div>
 
