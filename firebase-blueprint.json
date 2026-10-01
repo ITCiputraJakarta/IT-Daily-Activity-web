@@ -34,6 +34,14 @@
         "expiresAt": { "type": "number" }
       },
       "required": ["date", "propertyName", "createdAt"]
+    },
+    "AppSettings": {
+      "title": "App Settings",
+      "description": "Company logo, IT PIC team members, and Client Users",
+      "type": "object",
+      "properties": {
+        "updatedAt": { "type": "number" }
+      }
     }
   },
   "firestore": {
@@ -44,6 +52,10 @@
     "/daily_checklists/{date}": {
       "schema": "DailyChecklistReport",
       "description": "Stores daily IT 31-task checklist reports"
+    },
+    "/app_settings/{settingId}": {
+      "schema": "AppSettings",
+      "description": "Stores logo, team members, and client users"
     }
   }
 }

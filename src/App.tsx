@@ -39,8 +39,15 @@ import {
   saveTeamMembersToCloud,
   loadTeamMembersFromCloud,
   saveClientUsersToCloud,
-  loadClientUsersFromCloud
+  loadClientUsersFromCloud,
+  subscribeToActivityReport,
+  subscribeToChecklistReport,
+  subscribeToTeamMembers,
+  subscribeToClientUsers,
+  subscribeToAppLogo,
+  DbConnectionResult
 } from './services/firebase';
+import { DatabaseStatusModal } from './components/DatabaseStatusModal';
 import { exportElementsToA4Pdf, triggerNativePrint } from './utils/pdfExport';
 import { formatReportDate, getTodayDateString } from './utils/imageUtils';
 import { Navbar } from './components/Navbar';
@@ -88,6 +95,9 @@ export default function App() {
   );
 
   const [isDbOnline, setIsDbOnline] = useState<boolean>(true);
+  const [dbConnectionResult, setDbConnectionResult] = useState<DbConnectionResult | null>(null);
+  const [isDbModalOpen, setIsDbModalOpen] = useState<boolean>(false);
+  const [isCheckingDb, setIsCheckingDb] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [saveStatusText, setSaveStatusText] = useState<string>('✓ Tersimpan otomatis ke Cloud');
   const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);
@@ -114,11 +124,19 @@ export default function App() {
   latestCheckRef.current = checklistReport;
 
   // Test Firebase connection
-  const handleCheckDbConnection = useCallback(async () => {
-    const res = await checkFirestoreConnection();
-    setIsDbOnline(res.isOnline);
-    setNotification(res.message);
-    setTimeout(() => setNotification(null), 3500);
+  const handleCheckDbConnection = useCallback(async (isSilent = false) => {
+    setIsCheckingDb(true);
+    try {
+      const res = await checkFirestoreConnection();
+      setIsDbOnline(res.isOnline);
+      setDbConnectionResult(res);
+      if (!isSilent) {
+        setNotification(res.message);
+        setTimeout(() => setNotification(null), 3500);
+      }
+    } finally {
+      setIsCheckingDb(false);
+    }
   }, []);
 
   // Update team members and save to local storage (with cascading report updates on current date only; past dates remain unchanged unless edited)
@@ -467,11 +485,11 @@ export default function App() {
     setTimeout(() => setNotification(null), 3500);
   };
 
-  // Run connection check, load cloud logo, and auto-cleanup on mount
+  // Run connection check, load cloud logo, real-time sync, and auto-cleanup on mount
   useEffect(() => {
     handleCheckDbConnection();
 
-    // Check if cloud has a synced logo
+    // Initial check if cloud has a synced logo
     loadAppLogoFromCloud().then((cloudLogo) => {
       if (cloudLogo) {
         setCustomLogoUrl(cloudLogo);
@@ -479,7 +497,17 @@ export default function App() {
       }
     });
 
-    // Check if cloud has synced team members (only apply if newer than local changes)
+    // Real-time listener for app logo
+    const unsubLogo = subscribeToAppLogo((cloudLogo) => {
+      setCustomLogoUrl(cloudLogo);
+      if (cloudLogo) {
+        saveCustomLogo(cloudLogo);
+      } else {
+        removeCustomLogo();
+      }
+    });
+
+    // Initial check if cloud has synced team members (only apply if newer than local changes)
     loadTeamMembersFromCloud().then((cloudData) => {
       if (cloudData) {
         const localUpdated = getTeamMembersLocalUpdatedAt();
@@ -490,7 +518,16 @@ export default function App() {
       }
     });
 
-    // Check if cloud has synced client users (only apply if newer than local changes)
+    // Real-time listener for team members
+    const unsubTeam = subscribeToTeamMembers((members, updatedAt) => {
+      const localUpdated = getTeamMembersLocalUpdatedAt();
+      if (updatedAt > localUpdated) {
+        setTeamMembers(members);
+        saveTeamMembersToStorage(members, updatedAt);
+      }
+    });
+
+    // Initial check if cloud has synced client users (only apply if newer than local changes)
     loadClientUsersFromCloud().then((cloudData) => {
       if (cloudData) {
         const localUpdated = getClientUsersLocalUpdatedAt();
@@ -498,6 +535,15 @@ export default function App() {
           setClientUsers(cloudData.users);
           saveClientUsersToStorage(cloudData.users, cloudData.updatedAt);
         }
+      }
+    });
+
+    // Real-time listener for client users
+    const unsubClients = subscribeToClientUsers((users, updatedAt) => {
+      const localUpdated = getClientUsersLocalUpdatedAt();
+      if (updatedAt > localUpdated) {
+        setClientUsers(users);
+        saveClientUsersToStorage(users, updatedAt);
       }
     });
 
@@ -509,6 +555,12 @@ export default function App() {
         );
       }
     });
+
+    return () => {
+      unsubLogo();
+      unsubTeam();
+      unsubClients();
+    };
   }, [handleCheckDbConnection]);
 
   // Flush any pending unsaved debounced edits immediately (e.g. before date switch or unmount)
@@ -684,8 +736,43 @@ export default function App() {
 
     loadData();
 
+    // Subscribe to real-time changes on Firestore for the active date (multi-user / multi-device synchronization)
+    const unsubActivity = subscribeToActivityReport(selectedDate, (remoteAct) => {
+      if (isCancelled) return;
+      if (remoteAct.date !== selectedDate) return;
+      // Do not interrupt user while actively typing
+      if (actDebounceTimerRef.current) return;
+      const localUpdated = latestActRef.current.updatedAt || 0;
+      const remoteUpdated = remoteAct.updatedAt || 0;
+      if (remoteUpdated > localUpdated) {
+        latestActRef.current = remoteAct;
+        lastSavedActRef.current = JSON.stringify(remoteAct);
+        saveActivityReportLocalImmediate(remoteAct);
+        setActivityReport(remoteAct);
+        setIsDbOnline(true);
+      }
+    });
+
+    const unsubChecklist = subscribeToChecklistReport(selectedDate, (remoteCheck) => {
+      if (isCancelled) return;
+      if (remoteCheck.date !== selectedDate) return;
+      // Do not interrupt user while actively typing
+      if (checkDebounceTimerRef.current) return;
+      const localUpdated = latestCheckRef.current.updatedAt || 0;
+      const remoteUpdated = remoteCheck.updatedAt || 0;
+      if (remoteUpdated > localUpdated) {
+        latestCheckRef.current = remoteCheck;
+        lastSavedCheckRef.current = JSON.stringify(remoteCheck);
+        saveChecklistReportLocalImmediate(remoteCheck);
+        setChecklistReport(remoteCheck);
+        setIsDbOnline(true);
+      }
+    });
+
     return () => {
       isCancelled = true;
+      unsubActivity();
+      unsubChecklist();
     };
   }, [selectedDate]);
 
@@ -934,7 +1021,10 @@ export default function App() {
         customLogoUrl={customLogoUrl}
         saveStatusText={saveStatusText}
         isDbOnline={isDbOnline}
-        onCheckDb={handleCheckDbConnection}
+        onCheckDb={() => {
+          setIsDbModalOpen(true);
+          handleCheckDbConnection(true);
+        }}
         checklistTaskCount={checklistReport.items.length}
       />
 
@@ -1161,6 +1251,15 @@ export default function App() {
         onClose={() => setIsLogoModalOpen(false)}
         customLogoUrl={customLogoUrl}
         onSaveLogo={handleSaveLogo}
+      />
+
+      {/* Database Connection & Security Status Modal */}
+      <DatabaseStatusModal
+        isOpen={isDbModalOpen}
+        onClose={() => setIsDbModalOpen(false)}
+        connectionResult={dbConnectionResult}
+        onRecheck={() => handleCheckDbConnection(true)}
+        isChecking={isCheckingDb}
       />
     </div>
   );

@@ -149,11 +149,11 @@ export const Navbar: React.FC<Props> = ({
           <button
             type="button"
             onClick={onCheckDb}
-            title="Status koneksi Cloud Firebase Firestore (Klik untuk tes)"
+            title="Status koneksi Cloud Firebase Firestore & Keamanan (Klik untuk buka detail & uji koneksi)"
             className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition border ${
               isDbOnline
-                ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                : 'bg-amber-50 text-amber-800 border-amber-300'
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
             }`}
           >
             <span
@@ -161,7 +161,7 @@ export const Navbar: React.FC<Props> = ({
                 isDbOnline ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
               }`}
             />
-            <span className="hidden md:inline">
+            <span className="hidden md:inline font-bold">
               {isDbOnline ? 'Firebase Online' : 'Penyimpanan Lokal'}
             </span>
           </button>

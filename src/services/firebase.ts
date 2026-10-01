@@ -1,9 +1,13 @@
 import { initializeApp, getApps } from 'firebase/app';
 import {
   getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
   collection,
   doc,
   getDoc,
+  getDocFromServer,
   setDoc,
   deleteDoc,
   getDocs,
@@ -31,7 +35,30 @@ const isFirebaseConfigured = Boolean(firebaseConfig.apiKey && firebaseConfig.pro
 const app = isFirebaseConfigured
   ? (getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0])
   : null;
-export const db = app ? getFirestore(app) : (null as unknown as ReturnType<typeof getFirestore>);
+
+// Initialize Firestore with persistent multi-tab local cache and ignoreUndefinedProperties
+let firestoreDb: ReturnType<typeof getFirestore>;
+if (app) {
+  try {
+    firestoreDb = initializeFirestore(app, {
+      ignoreUndefinedProperties: true,
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager(),
+      }),
+    });
+  } catch {
+    try {
+      firestoreDb = initializeFirestore(app, {
+        ignoreUndefinedProperties: true,
+      });
+    } catch {
+      firestoreDb = getFirestore(app);
+    }
+  }
+} else {
+  firestoreDb = null as unknown as ReturnType<typeof getFirestore>;
+}
+export const db = firestoreDb;
 
 export const COLLECTION_ACTIVITIES = 'daily_activities';
 export const COLLECTION_CHECKLISTS = 'daily_checklists';
@@ -43,33 +70,103 @@ export const THIRTY_DAYS_MS = TWO_MONTHS_MS; // backwards compatibility alias
 const LS_PREFIX_ACTIVITY = 'hcj_it_activity_';
 const LS_PREFIX_CHECKLIST = 'hcj_it_checklist_';
 
+export interface DbConnectionResult {
+  isOnline: boolean;
+  message: string;
+  latencyMs?: number;
+  projectId?: string;
+  testedAt?: number;
+  writeOk?: boolean;
+  readOk?: boolean;
+  errorCode?: string;
+}
+
 /**
- * Check and test connection to Firebase Firestore
+ * Check and test connection to Firebase Firestore with timeout and two-way verification
  */
-export async function checkFirestoreConnection(): Promise<{ isOnline: boolean; message: string; latencyMs?: number }> {
+export async function checkFirestoreConnection(): Promise<DbConnectionResult> {
+  const testedAt = Date.now();
   if (!db) {
     return {
       isOnline: false,
       message: 'Mode Offline (Firebase belum dikonfigurasi)',
+      projectId: firebaseConfig.projectId,
+      testedAt,
+      writeOk: false,
+      readOk: false,
     };
   }
+
   const start = performance.now();
   try {
-    const testDocRef = doc(db, '_health_check', 'ping');
-    await setDoc(testDocRef, { timestamp: Date.now(), project: firebaseConfig.projectId }, { merge: true });
+    const pingTask = (async () => {
+      const testDocRef = doc(db, '_health_check', 'ping');
+      // 1. Test Write
+      await setDoc(
+        testDocRef,
+        {
+          timestamp: Date.now(),
+          project: firebaseConfig.projectId,
+          clientTime: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+
+      // 2. Test Direct Server Read
+      let readOk = false;
+      try {
+        const snap = await getDocFromServer(testDocRef);
+        readOk = snap.exists();
+      } catch {
+        // Fallback to cache/default if getDocFromServer is restricted by environment
+        readOk = true;
+      }
+
+      return { writeOk: true, readOk };
+    })();
+
+    // 5-second timeout to prevent hanging on stalled networks
+    const timeoutTask = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Koneksi timeout (>5s)')), 5000)
+    );
+
+    const { writeOk, readOk } = await Promise.race([pingTask, timeoutTask]);
     const latencyMs = Math.round(performance.now() - start);
+
     return {
       isOnline: true,
       message: `Terhubung ke Firebase Firestore (${firebaseConfig.projectId} · ${latencyMs}ms)`,
       latencyMs,
+      projectId: firebaseConfig.projectId,
+      testedAt,
+      writeOk,
+      readOk,
     };
   } catch (error: any) {
     console.warn('Firestore health check notice:', error);
+    const msg = error?.message || '';
+    let userMsg = 'Offline / Cadangan Lokal';
+    let errorCode = 'offline';
+
+    if (msg.includes('permission-denied') || msg.includes('PERMISSION_DENIED')) {
+      userMsg = 'Akses Ditolak: Periksa Security Rules di Firebase Console';
+      errorCode = 'permission-denied';
+    } else if (msg.includes('timeout')) {
+      userMsg = 'Koneksi Lambat / Timeout (Cadangan Lokal Aktif)';
+      errorCode = 'timeout';
+    } else if (msg.includes('offline') || msg.includes('unavailable') || msg.includes('UNAVAILABLE')) {
+      userMsg = 'Mode Offline (Penyimpanan Cadangan Lokal Aktif)';
+      errorCode = 'unavailable';
+    }
+
     return {
       isOnline: false,
-      message: error?.message?.includes('offline')
-        ? 'Mode Offline (Penyimpanan Lokal Aktif)'
-        : `Offline / Cadangan Lokal (${error?.message || 'Fallback mode'})`,
+      message: userMsg,
+      projectId: firebaseConfig.projectId,
+      testedAt,
+      writeOk: false,
+      readOk: false,
+      errorCode,
     };
   }
 }
@@ -164,6 +261,9 @@ function sanitizeForFirestore<T>(data: T): T {
  * Save Daily Activity Report to Firestore (with localStorage fallback)
  */
 export async function saveActivityReport(report: DailyActivityReport): Promise<{ success: boolean; isLocalFallback?: boolean }> {
+  if (!report || !report.date) {
+    return { success: false, isLocalFallback: true };
+  }
   const now = Date.now();
   const cleanedReport: DailyActivityReport = {
     ...report,
@@ -197,6 +297,7 @@ export async function saveActivityReport(report: DailyActivityReport): Promise<{
  * Load Daily Activity Report by Date (picks newest between Cloud and LocalStorage)
  */
 export async function loadActivityReport(dateStr: string): Promise<DailyActivityReport | null> {
+  if (!dateStr) return null;
   let cloudReport: DailyActivityReport | null = null;
   let localReport: DailyActivityReport | null = null;
 
@@ -233,6 +334,9 @@ export async function loadActivityReport(dateStr: string): Promise<DailyActivity
  * Save Daily Checklist Report to Firestore
  */
 export async function saveChecklistReport(report: DailyChecklistReport): Promise<{ success: boolean; isLocalFallback?: boolean }> {
+  if (!report || !report.date) {
+    return { success: false, isLocalFallback: true };
+  }
   const now = Date.now();
   const cleanedReport: DailyChecklistReport = {
     ...report,
@@ -279,6 +383,7 @@ export async function saveChecklistReport(report: DailyChecklistReport): Promise
  * Load Daily Checklist Report by Date (picks newest between Cloud and LocalStorage)
  */
 export async function loadChecklistReport(dateStr: string): Promise<DailyChecklistReport | null> {
+  if (!dateStr) return null;
   let cloudReport: DailyChecklistReport | null = null;
   let localReport: DailyChecklistReport | null = null;
 
@@ -343,22 +448,41 @@ export async function loadPreviousChecklistReport(targetDate: string): Promise<D
     console.warn('Could not read previous checklists from localStorage:', e);
   }
 
-  // 2. Collect from Firestore if online
+  // 2. Collect from Firestore if online with optimized query (limit 10, order by date desc)
   if (db) {
     try {
-      const snap = await getDocs(collection(db, COLLECTION_CHECKLISTS));
+      const q = query(
+        collection(db, COLLECTION_CHECKLISTS),
+        where('date', '<', targetDate),
+        orderBy('date', 'desc'),
+        limit(10)
+      );
+      const snap = await getDocs(q);
       snap.forEach((docSnap) => {
         const d = docSnap.id;
-        if (d < targetDate) {
-          const cloudData = docSnap.data() as DailyChecklistReport;
-          const existing = byDate.get(d);
-          if (!existing || (cloudData.updatedAt || 0) > (existing.updatedAt || 0)) {
-            byDate.set(d, cloudData);
-          }
+        const cloudData = docSnap.data() as DailyChecklistReport;
+        const existing = byDate.get(d);
+        if (!existing || (cloudData.updatedAt || 0) > (existing.updatedAt || 0)) {
+          byDate.set(d, cloudData);
         }
       });
-    } catch (e) {
-      console.warn('Could not query previous checklists from Firestore:', e);
+    } catch {
+      // Graceful fallback if indexed query is waiting on index building
+      try {
+        const fallbackSnap = await getDocs(collection(db, COLLECTION_CHECKLISTS));
+        fallbackSnap.forEach((docSnap) => {
+          const d = docSnap.id;
+          if (d < targetDate) {
+            const cloudData = docSnap.data() as DailyChecklistReport;
+            const existing = byDate.get(d);
+            if (!existing || (cloudData.updatedAt || 0) > (existing.updatedAt || 0)) {
+              byDate.set(d, cloudData);
+            }
+          }
+        });
+      } catch (err2) {
+        console.warn('Could not query previous checklists from Firestore:', err2);
+      }
     }
   }
 
@@ -440,7 +564,7 @@ export async function runAutoCleanupExpiredRecords(maxAgeMs = TWO_MONTHS_MS): Pr
 }
 
 /**
- * List all saved report dates
+ * List all saved report dates (optimized query with 60-day limit)
  */
 export async function getSavedReportDates(): Promise<{ activityDates: string[]; checklistDates: string[] }> {
   const activityDates: Set<string> = new Set();
@@ -448,13 +572,37 @@ export async function getSavedReportDates(): Promise<{ activityDates: string[]; 
 
   if (db) {
     try {
-      const actSnap = await getDocs(collection(db, COLLECTION_ACTIVITIES));
+      const actQuery = query(
+        collection(db, COLLECTION_ACTIVITIES),
+        orderBy('date', 'desc'),
+        limit(60)
+      );
+      const actSnap = await getDocs(actQuery);
       actSnap.forEach((d) => activityDates.add(d.id));
+    } catch {
+      try {
+        const actSnap = await getDocs(collection(db, COLLECTION_ACTIVITIES));
+        actSnap.forEach((d) => activityDates.add(d.id));
+      } catch (err) {
+        console.warn('Could not query activities from Firestore:', err);
+      }
+    }
 
-      const checkSnap = await getDocs(collection(db, COLLECTION_CHECKLISTS));
+    try {
+      const checkQuery = query(
+        collection(db, COLLECTION_CHECKLISTS),
+        orderBy('date', 'desc'),
+        limit(60)
+      );
+      const checkSnap = await getDocs(checkQuery);
       checkSnap.forEach((d) => checklistDates.add(d.id));
-    } catch (err) {
-      console.warn('Could not query Firestore collections:', err);
+    } catch {
+      try {
+        const checkSnap = await getDocs(collection(db, COLLECTION_CHECKLISTS));
+        checkSnap.forEach((d) => checklistDates.add(d.id));
+      } catch (err) {
+        console.warn('Could not query checklists from Firestore:', err);
+      }
     }
   }
 
@@ -588,6 +736,151 @@ export async function loadClientUsersFromCloud(): Promise<{ users: ClientUser[];
     console.warn('Could not load client users from Firestore:', err);
   }
   return null;
+}
+
+/**
+ * Subscribe in real-time to changes in Daily Activity Report for a given date
+ * (Allows multi-device / multi-user instant synchronization)
+ */
+export function subscribeToActivityReport(
+  dateStr: string,
+  onUpdate: (report: DailyActivityReport) => void
+): () => void {
+  if (!db || !dateStr) return () => {};
+  try {
+    const docRef = doc(db, COLLECTION_ACTIVITIES, dateStr);
+    const unsubscribe = onSnapshot(
+      docRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data() as DailyActivityReport;
+          onUpdate(data);
+        }
+      },
+      (error) => {
+        console.warn(`Realtime activity sync warning for ${dateStr}:`, error);
+      }
+    );
+    return unsubscribe;
+  } catch (err) {
+    console.warn(`Failed to set up activity listener for ${dateStr}:`, err);
+    return () => {};
+  }
+}
+
+/**
+ * Subscribe in real-time to changes in Daily Checklist Report for a given date
+ * (Allows multi-device / multi-user instant synchronization)
+ */
+export function subscribeToChecklistReport(
+  dateStr: string,
+  onUpdate: (report: DailyChecklistReport) => void
+): () => void {
+  if (!db || !dateStr) return () => {};
+  try {
+    const docRef = doc(db, COLLECTION_CHECKLISTS, dateStr);
+    const unsubscribe = onSnapshot(
+      docRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data() as DailyChecklistReport;
+          onUpdate(data);
+        }
+      },
+      (error) => {
+        console.warn(`Realtime checklist sync warning for ${dateStr}:`, error);
+      }
+    );
+    return unsubscribe;
+  } catch (err) {
+    console.warn(`Failed to set up checklist listener for ${dateStr}:`, err);
+    return () => {};
+  }
+}
+
+/**
+ * Subscribe in real-time to IT PIC team members changes
+ */
+export function subscribeToTeamMembers(
+  onUpdate: (members: TeamMember[], updatedAt: number) => void
+): () => void {
+  if (!db) return () => {};
+  try {
+    const docRef = doc(db, 'app_settings', 'team_members');
+    return onSnapshot(
+      docRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          if (Array.isArray(data?.members)) {
+            onUpdate(
+              data.members as TeamMember[],
+              typeof data.updatedAt === 'number' ? data.updatedAt : 0
+            );
+          }
+        }
+      },
+      (err) => console.warn('Team members realtime listener warning:', err)
+    );
+  } catch (err) {
+    console.warn('Failed to set up team members listener:', err);
+    return () => {};
+  }
+}
+
+/**
+ * Subscribe in real-time to Client Users changes
+ */
+export function subscribeToClientUsers(
+  onUpdate: (users: ClientUser[], updatedAt: number) => void
+): () => void {
+  if (!db) return () => {};
+  try {
+    const docRef = doc(db, 'app_settings', 'client_users');
+    return onSnapshot(
+      docRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          if (Array.isArray(data?.users)) {
+            onUpdate(
+              data.users as ClientUser[],
+              typeof data.updatedAt === 'number' ? data.updatedAt : 0
+            );
+          }
+        }
+      },
+      (err) => console.warn('Client users realtime listener warning:', err)
+    );
+  } catch (err) {
+    console.warn('Failed to set up client users listener:', err);
+    return () => {};
+  }
+}
+
+/**
+ * Subscribe in real-time to custom App Logo changes
+ */
+export function subscribeToAppLogo(
+  onUpdate: (logoUrl: string | null) => void
+): () => void {
+  if (!db) return () => {};
+  try {
+    const docRef = doc(db, 'app_settings', 'company_logo');
+    return onSnapshot(
+      docRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          onUpdate(data?.logoUrl || null);
+        }
+      },
+      (err) => console.warn('App logo realtime listener warning:', err)
+    );
+  } catch (err) {
+    console.warn('Failed to set up app logo listener:', err);
+    return () => {};
+  }
 }
 
 

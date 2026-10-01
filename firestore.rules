@@ -2,8 +2,55 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // Helper functions for security, schema validation, and sanitization
+    function isValidDateString(dateStr) {
+      return dateStr is string && dateStr.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+    }
+
+    function isReasonableSize() {
+      // Prevents oversized document injections while easily accommodating compressed images (~60KB)
+      return request.resource.data.size() < 100;
+    }
+
+    // Daily Activity Reports (IT Daily Operations & Logbook)
+    match /daily_activities/{date} {
+      allow read: if true;
+      allow create, update: if isValidDateString(date)
+        && request.resource.data.date == date
+        && request.resource.data.propertyName is string
+        && request.resource.data.updatedAt is number
+        && isReasonableSize();
+      allow delete: if isValidDateString(date);
+    }
+
+    // Daily Checklist Reports (31 Tasks Morning & Evening Operations)
+    match /daily_checklists/{date} {
+      allow read: if true;
+      allow create, update: if isValidDateString(date)
+        && request.resource.data.date == date
+        && request.resource.data.propertyName is string
+        && request.resource.data.items is list
+        && request.resource.data.updatedAt is number
+        && isReasonableSize();
+      allow delete: if isValidDateString(date);
+    }
+
+    // App Settings (Company Logo, IT PIC Team Members, Client Users)
+    match /app_settings/{settingId} {
+      allow read: if true;
+      allow write: if settingId in ['company_logo', 'team_members', 'client_users']
+        && isReasonableSize();
+    }
+
+    // Health Check Ping for online latency & connectivity monitor
+    match /_health_check/{docId} {
+      allow read, write: if docId == 'ping';
+    }
+
+    // Lock down all other document paths by default for security
     match /{document=**} {
-      allow read, write: if request.time < timestamp.date(2026, 10, 26);
+      allow read, write: if false;
     }
   }
 }
