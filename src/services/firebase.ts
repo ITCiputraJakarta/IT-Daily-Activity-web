@@ -18,7 +18,11 @@ import {
   onSnapshot
 } from 'firebase/firestore';
 import { DailyActivityReport, DailyChecklistReport, TeamMember, ClientUser } from '../types';
-import { createChecklistFromPrevious, isChecklistCustomModified } from '../data/defaults';
+import {
+  createChecklistFromPrevious,
+  isChecklistCustomModified,
+  isActivityCustomModified
+} from '../data/defaults';
 
 export const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyCBuEIu1ITK40brP7SCWKQOQBdaMDFQx6M",
@@ -171,22 +175,77 @@ export async function checkFirestoreConnection(): Promise<DbConnectionResult> {
   }
 }
 
+// Helper to remove any undefined properties so Firestore setDoc never throws Unsupported field value: undefined
+function sanitizeForFirestore<T>(data: T): T {
+  return JSON.parse(JSON.stringify(data));
+}
+
+/**
+ * Safely writes to LocalStorage, automatically evicting oldest cached reports if QuotaExceededError occurs
+ */
+function safeSetLocalStorage(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    try {
+      const reportKeys: { k: string; date: string }[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (
+          k &&
+          k !== key &&
+          (k.startsWith(LS_PREFIX_ACTIVITY) || k.startsWith(LS_PREFIX_CHECKLIST))
+        ) {
+          const date = k
+            .replace(LS_PREFIX_ACTIVITY, '')
+            .replace(LS_PREFIX_CHECKLIST, '');
+          reportKeys.push({ k, date });
+        }
+      }
+      reportKeys.sort((a, b) => a.date.localeCompare(b.date));
+      for (let i = 0; i < Math.min(5, reportKeys.length); i++) {
+        localStorage.removeItem(reportKeys[i].k);
+      }
+      localStorage.setItem(key, value);
+    } catch (retryErr) {
+      console.warn('LocalStorage quota full even after cleanup:', retryErr);
+    }
+  }
+}
+
+/**
+ * Counts how many non-empty photos exist in a DailyActivityReport
+ */
+function countActivityPhotos(rep: DailyActivityReport | null | undefined): number {
+  if (!rep) return 0;
+  let count = 0;
+  if (Array.isArray(rep.logBookActivities)) {
+    for (const act of rep.logBookActivities) {
+      if (act?.pictureUrl?.trim()) count++;
+    }
+  }
+  if (rep.saraActivity?.screenshotUrl?.trim()) count++;
+  if (rep.internetTraffic?.screenshotUrl?.trim()) count++;
+  if (rep.serverTemperature?.photoUrl?.trim()) count++;
+  return count;
+}
+
 /**
  * Immediately persist Daily Activity Report to LocalStorage (0ms latency)
  */
 export function saveActivityReportLocalImmediate(report: DailyActivityReport): void {
+  if (!report || !report.date) return;
   const now = Date.now();
+  const isModified = report.isUserModified ?? isActivityCustomModified(report);
   const cleanedReport: DailyActivityReport = {
     ...report,
-    updatedAt: report.updatedAt || now,
+    propertyName: report.propertyName || 'Hotel Ciputra Jakarta',
+    isUserModified: isModified,
+    updatedAt: isModified ? (report.updatedAt || now) : 0,
     createdAt: report.createdAt || now,
     expiresAt: report.expiresAt || (now + TWO_MONTHS_MS),
   };
-  try {
-    localStorage.setItem(LS_PREFIX_ACTIVITY + report.date, JSON.stringify(cleanedReport));
-  } catch (e) {
-    console.warn('LocalStorage immediate activity save failed:', e);
-  }
+  safeSetLocalStorage(LS_PREFIX_ACTIVITY + report.date, JSON.stringify(cleanedReport));
 }
 
 /**
@@ -219,7 +278,7 @@ export function propagateChecklistLocalForward(sourceReport: DailyChecklistRepor
           break;
         }
         const inherited = createChecklistFromPrevious(date, sourceReport);
-        localStorage.setItem(key, JSON.stringify(inherited));
+        safeSetLocalStorage(key, JSON.stringify(inherited));
         updatedFutureDates.push(date);
       } catch {
         // ignore parse errors
@@ -235,26 +294,22 @@ export function propagateChecklistLocalForward(sourceReport: DailyChecklistRepor
  * Immediately persist Daily Checklist Report to LocalStorage (0ms latency)
  */
 export function saveChecklistReportLocalImmediate(report: DailyChecklistReport): void {
+  if (!report || !report.date) return;
   const now = Date.now();
+  const isModified = report.isUserModified ?? isChecklistCustomModified(report);
   const cleanedReport: DailyChecklistReport = {
     ...report,
-    updatedAt: report.updatedAt || now,
+    propertyName: report.propertyName || 'Hotel Ciputra Jakarta',
+    items: Array.isArray(report.items) ? report.items : [],
+    isUserModified: isModified,
+    updatedAt: isModified ? (report.updatedAt || now) : 0,
     createdAt: report.createdAt || now,
     expiresAt: report.expiresAt || (now + TWO_MONTHS_MS),
   };
-  try {
-    localStorage.setItem(LS_PREFIX_CHECKLIST + report.date, JSON.stringify(cleanedReport));
-    if (cleanedReport.isUserModified) {
-      propagateChecklistLocalForward(cleanedReport);
-    }
-  } catch (e) {
-    console.warn('LocalStorage immediate checklist save failed:', e);
+  safeSetLocalStorage(LS_PREFIX_CHECKLIST + report.date, JSON.stringify(cleanedReport));
+  if (cleanedReport.isUserModified) {
+    propagateChecklistLocalForward(cleanedReport);
   }
-}
-
-// Helper to remove any undefined properties so Firestore setDoc never throws Unsupported field value: undefined
-function sanitizeForFirestore<T>(data: T): T {
-  return JSON.parse(JSON.stringify(data));
 }
 
 /**
@@ -265,19 +320,18 @@ export async function saveActivityReport(report: DailyActivityReport): Promise<{
     return { success: false, isLocalFallback: true };
   }
   const now = Date.now();
-  const cleanedReport: DailyActivityReport = {
+  const isModified = report.isUserModified ?? isActivityCustomModified(report);
+  const cleanedReport: DailyActivityReport = sanitizeForFirestore({
     ...report,
-    updatedAt: now,
+    propertyName: report.propertyName || 'Hotel Ciputra Jakarta',
+    isUserModified: isModified,
+    updatedAt: isModified ? (report.updatedAt || now) : 0,
     createdAt: report.createdAt || now,
     expiresAt: report.expiresAt || (now + TWO_MONTHS_MS),
-  };
+  });
 
   // Always keep in local storage as instant backup
-  try {
-    localStorage.setItem(LS_PREFIX_ACTIVITY + report.date, JSON.stringify(cleanedReport));
-  } catch (e) {
-    console.warn('LocalStorage save failed:', e);
-  }
+  safeSetLocalStorage(LS_PREFIX_ACTIVITY + report.date, JSON.stringify(cleanedReport));
 
   if (!db) {
     return { success: true, isLocalFallback: true };
@@ -285,7 +339,7 @@ export async function saveActivityReport(report: DailyActivityReport): Promise<{
 
   try {
     const docRef = doc(db, COLLECTION_ACTIVITIES, report.date);
-    await setDoc(docRef, sanitizeForFirestore(cleanedReport));
+    await setDoc(docRef, cleanedReport);
     return { success: true };
   } catch (error) {
     console.error('Firestore saveActivityReport error, using local fallback:', error);
@@ -294,7 +348,7 @@ export async function saveActivityReport(report: DailyActivityReport): Promise<{
 }
 
 /**
- * Load Daily Activity Report by Date (picks newest between Cloud and LocalStorage)
+ * Load Daily Activity Report by Date (prioritizes user-modified/uploaded data and syncs between Cloud & LocalStorage)
  */
 export async function loadActivityReport(dateStr: string): Promise<DailyActivityReport | null> {
   if (!dateStr) return null;
@@ -323,11 +377,88 @@ export async function loadActivityReport(dateStr: string): Promise<DailyActivity
   }
 
   if (cloudReport && localReport) {
-    return (localReport.updatedAt || 0) >= (cloudReport.updatedAt || 0)
-      ? localReport
-      : cloudReport;
+    const cloudHasData = isActivityCustomModified(cloudReport);
+    const localHasData = isActivityCustomModified(localReport);
+
+    // Never let an unedited blank template overwrite a report that has real user data or uploaded photos
+    if (cloudHasData && !localHasData) {
+      safeSetLocalStorage(LS_PREFIX_ACTIVITY + dateStr, JSON.stringify(cloudReport));
+      return cloudReport;
+    }
+    if (localHasData && !cloudHasData) {
+      if (db) {
+        setDoc(doc(db, COLLECTION_ACTIVITIES, dateStr), sanitizeForFirestore(localReport)).catch(() => {});
+      }
+      return localReport;
+    }
+
+    const cloudPhotos = countActivityPhotos(cloudReport);
+    const localPhotos = countActivityPhotos(localReport);
+
+    if ((localReport.updatedAt || 0) >= (cloudReport.updatedAt || 0)) {
+      let merged = localReport;
+      if (cloudPhotos > localPhotos) {
+        merged = {
+          ...localReport,
+          saraActivity: {
+            ...localReport.saraActivity,
+            screenshotUrl: localReport.saraActivity?.screenshotUrl || cloudReport.saraActivity?.screenshotUrl || '',
+          },
+          internetTraffic: {
+            ...localReport.internetTraffic,
+            screenshotUrl: localReport.internetTraffic?.screenshotUrl || cloudReport.internetTraffic?.screenshotUrl || '',
+          },
+          serverTemperature: {
+            ...localReport.serverTemperature,
+            photoUrl: localReport.serverTemperature?.photoUrl || cloudReport.serverTemperature?.photoUrl || '',
+          },
+        };
+      }
+      safeSetLocalStorage(LS_PREFIX_ACTIVITY + dateStr, JSON.stringify(merged));
+      if (db && localHasData) {
+        setDoc(doc(db, COLLECTION_ACTIVITIES, dateStr), sanitizeForFirestore(merged)).catch(() => {});
+      }
+      return merged;
+    } else {
+      let merged = cloudReport;
+      if (localPhotos > cloudPhotos) {
+        merged = {
+          ...cloudReport,
+          saraActivity: {
+            ...cloudReport.saraActivity,
+            screenshotUrl: cloudReport.saraActivity?.screenshotUrl || localReport.saraActivity?.screenshotUrl || '',
+          },
+          internetTraffic: {
+            ...cloudReport.internetTraffic,
+            screenshotUrl: cloudReport.internetTraffic?.screenshotUrl || localReport.internetTraffic?.screenshotUrl || '',
+          },
+          serverTemperature: {
+            ...cloudReport.serverTemperature,
+            photoUrl: cloudReport.serverTemperature?.photoUrl || localReport.serverTemperature?.photoUrl || '',
+          },
+        };
+        if (db) {
+          setDoc(doc(db, COLLECTION_ACTIVITIES, dateStr), sanitizeForFirestore(merged)).catch(() => {});
+        }
+      }
+      safeSetLocalStorage(LS_PREFIX_ACTIVITY + dateStr, JSON.stringify(merged));
+      return merged;
+    }
   }
-  return localReport || cloudReport || null;
+
+  if (cloudReport) {
+    safeSetLocalStorage(LS_PREFIX_ACTIVITY + dateStr, JSON.stringify(cloudReport));
+    return cloudReport;
+  }
+
+  if (localReport) {
+    if (db && isActivityCustomModified(localReport)) {
+      setDoc(doc(db, COLLECTION_ACTIVITIES, dateStr), sanitizeForFirestore(localReport)).catch(() => {});
+    }
+    return localReport;
+  }
+
+  return null;
 }
 
 /**
@@ -338,21 +469,21 @@ export async function saveChecklistReport(report: DailyChecklistReport): Promise
     return { success: false, isLocalFallback: true };
   }
   const now = Date.now();
-  const cleanedReport: DailyChecklistReport = {
+  const isModified = report.isUserModified ?? isChecklistCustomModified(report);
+  const cleanedReport: DailyChecklistReport = sanitizeForFirestore({
     ...report,
-    updatedAt: now,
+    propertyName: report.propertyName || 'Hotel Ciputra Jakarta',
+    items: Array.isArray(report.items) ? report.items : [],
+    isUserModified: isModified,
+    updatedAt: isModified ? (report.updatedAt || now) : 0,
     createdAt: report.createdAt || now,
     expiresAt: report.expiresAt || (now + TWO_MONTHS_MS),
-  };
+  });
 
   let propagatedDates: string[] = [];
-  try {
-    localStorage.setItem(LS_PREFIX_CHECKLIST + report.date, JSON.stringify(cleanedReport));
-    if (cleanedReport.isUserModified) {
-      propagatedDates = propagateChecklistLocalForward(cleanedReport);
-    }
-  } catch (e) {
-    console.warn('LocalStorage save failed:', e);
+  safeSetLocalStorage(LS_PREFIX_CHECKLIST + report.date, JSON.stringify(cleanedReport));
+  if (cleanedReport.isUserModified) {
+    propagatedDates = propagateChecklistLocalForward(cleanedReport);
   }
 
   if (!db) {
@@ -361,14 +492,14 @@ export async function saveChecklistReport(report: DailyChecklistReport): Promise
 
   try {
     const docRef = doc(db, COLLECTION_CHECKLISTS, report.date);
-    await setDoc(docRef, sanitizeForFirestore(cleanedReport));
+    await setDoc(docRef, cleanedReport);
 
     // Also sync any forward-propagated unedited future dates to Firestore
     for (const futDate of propagatedDates) {
       const rawFut = localStorage.getItem(LS_PREFIX_CHECKLIST + futDate);
       if (rawFut) {
-        const parsedFut = JSON.parse(rawFut) as DailyChecklistReport;
-        await setDoc(doc(db, COLLECTION_CHECKLISTS, futDate), sanitizeForFirestore(parsedFut));
+        const parsedFut = sanitizeForFirestore(JSON.parse(rawFut) as DailyChecklistReport);
+        await setDoc(doc(db, COLLECTION_CHECKLISTS, futDate), parsedFut);
       }
     }
 
@@ -380,7 +511,7 @@ export async function saveChecklistReport(report: DailyChecklistReport): Promise
 }
 
 /**
- * Load Daily Checklist Report by Date (picks newest between Cloud and LocalStorage)
+ * Load Daily Checklist Report by Date (prioritizes user-modified data and syncs between Cloud and LocalStorage)
  */
 export async function loadChecklistReport(dateStr: string): Promise<DailyChecklistReport | null> {
   if (!dateStr) return null;
@@ -409,11 +540,53 @@ export async function loadChecklistReport(dateStr: string): Promise<DailyCheckli
   }
 
   if (cloudReport && localReport) {
-    return (localReport.updatedAt || 0) >= (cloudReport.updatedAt || 0)
-      ? localReport
-      : cloudReport;
+    const cloudModified = isChecklistCustomModified(cloudReport);
+    const localModified = isChecklistCustomModified(localReport);
+
+    if (cloudModified && !localModified) {
+      safeSetLocalStorage(LS_PREFIX_CHECKLIST + dateStr, JSON.stringify(cloudReport));
+      return cloudReport;
+    }
+    if (localModified && !cloudModified) {
+      if (db) {
+        setDoc(doc(db, COLLECTION_CHECKLISTS, dateStr), sanitizeForFirestore(localReport)).catch(() => {});
+      }
+      return localReport;
+    }
+
+    if ((localReport.updatedAt || 0) >= (cloudReport.updatedAt || 0)) {
+      const merged: DailyChecklistReport = {
+        ...localReport,
+        waReportPhoto: localReport.waReportPhoto || cloudReport.waReportPhoto || '',
+      };
+      safeSetLocalStorage(LS_PREFIX_CHECKLIST + dateStr, JSON.stringify(merged));
+      if (db && localModified) {
+        setDoc(doc(db, COLLECTION_CHECKLISTS, dateStr), sanitizeForFirestore(merged)).catch(() => {});
+      }
+      return merged;
+    } else {
+      const merged: DailyChecklistReport = {
+        ...cloudReport,
+        waReportPhoto: cloudReport.waReportPhoto || localReport.waReportPhoto || '',
+      };
+      safeSetLocalStorage(LS_PREFIX_CHECKLIST + dateStr, JSON.stringify(merged));
+      return merged;
+    }
   }
-  return localReport || cloudReport || null;
+
+  if (cloudReport) {
+    safeSetLocalStorage(LS_PREFIX_CHECKLIST + dateStr, JSON.stringify(cloudReport));
+    return cloudReport;
+  }
+
+  if (localReport) {
+    if (db && isChecklistCustomModified(localReport)) {
+      setDoc(doc(db, COLLECTION_CHECKLISTS, dateStr), sanitizeForFirestore(localReport)).catch(() => {});
+    }
+    return localReport;
+  }
+
+  return null;
 }
 
 /**
@@ -667,10 +840,10 @@ export async function saveTeamMembersToCloud(members: TeamMember[], updatedAt = 
   if (!db) return;
   try {
     const docRef = doc(db, 'app_settings', 'team_members');
-    await setDoc(docRef, {
+    await setDoc(docRef, sanitizeForFirestore({
       members,
       updatedAt,
-    });
+    }));
   } catch (err) {
     console.warn('Could not save team members to Firestore:', err);
   }
@@ -706,10 +879,10 @@ export async function saveClientUsersToCloud(users: ClientUser[], updatedAt = Da
   if (!db) return;
   try {
     const docRef = doc(db, 'app_settings', 'client_users');
-    await setDoc(docRef, {
+    await setDoc(docRef, sanitizeForFirestore({
       users,
       updatedAt,
-    });
+    }));
   } catch (err) {
     console.warn('Could not save client users to Firestore:', err);
   }
@@ -881,6 +1054,81 @@ export function subscribeToAppLogo(
     console.warn('Failed to set up app logo listener:', err);
     return () => {};
   }
+}
+
+/**
+ * Synchronizes any user-modified reports in LocalStorage with Cloud Firestore
+ * Ensures that if a user uploaded photos or filled forms while briefly offline or before a reload,
+ * their data is automatically pushed to Firestore.
+ */
+export async function syncPendingLocalReportsToCloud(): Promise<number> {
+  if (!db) return 0;
+  let syncedCount = 0;
+
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key) continue;
+
+      if (key.startsWith(LS_PREFIX_ACTIVITY)) {
+        const dateStr = key.replace(LS_PREFIX_ACTIVITY, '');
+        const raw = localStorage.getItem(key);
+        if (!raw) continue;
+        try {
+          const localAct = JSON.parse(raw) as DailyActivityReport;
+          if (isActivityCustomModified(localAct)) {
+            const docRef = doc(db, COLLECTION_ACTIVITIES, dateStr);
+            const snap = await getDoc(docRef);
+            if (!snap.exists()) {
+              await setDoc(docRef, sanitizeForFirestore(localAct));
+              syncedCount++;
+            } else {
+              const cloudAct = snap.data() as DailyActivityReport;
+              if (
+                !isActivityCustomModified(cloudAct) ||
+                (localAct.updatedAt || 0) > (cloudAct.updatedAt || 0)
+              ) {
+                await setDoc(docRef, sanitizeForFirestore(localAct));
+                syncedCount++;
+              }
+            }
+          }
+        } catch {
+          // ignore invalid JSON
+        }
+      } else if (key.startsWith(LS_PREFIX_CHECKLIST)) {
+        const dateStr = key.replace(LS_PREFIX_CHECKLIST, '');
+        const raw = localStorage.getItem(key);
+        if (!raw) continue;
+        try {
+          const localCheck = JSON.parse(raw) as DailyChecklistReport;
+          if (isChecklistCustomModified(localCheck)) {
+            const docRef = doc(db, COLLECTION_CHECKLISTS, dateStr);
+            const snap = await getDoc(docRef);
+            if (!snap.exists()) {
+              await setDoc(docRef, sanitizeForFirestore(localCheck));
+              syncedCount++;
+            } else {
+              const cloudCheck = snap.data() as DailyChecklistReport;
+              if (
+                !isChecklistCustomModified(cloudCheck) ||
+                (localCheck.updatedAt || 0) > (cloudCheck.updatedAt || 0)
+              ) {
+                await setDoc(docRef, sanitizeForFirestore(localCheck));
+                syncedCount++;
+              }
+            }
+          }
+        } catch {
+          // ignore invalid JSON
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Background cloud sync warning:', err);
+  }
+
+  return syncedCount;
 }
 
 

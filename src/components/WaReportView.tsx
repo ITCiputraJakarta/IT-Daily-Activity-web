@@ -61,7 +61,20 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
 
+  const latestChecklistRef = useRef<DailyChecklistReport>(checklistReport);
+  latestChecklistRef.current = checklistReport;
+
   const [showDeletePhotoModal, setShowDeletePhotoModal] = useState<boolean>(false);
+
+  // Helper to determine if a task belongs to Evening Shift (matches DailyChecklistForm)
+  const isTaskEvening = (item: { shift?: string; personIncharge?: string }): boolean => {
+    if (item.shift === 'evening') return true;
+    if (item.shift === 'morning') return false;
+    if (checklistReport.eveningShiftPic && item.personIncharge === checklistReport.eveningShiftPic) {
+      return true;
+    }
+    return false;
+  };
 
   // Item #1 from checklist (Unifi Controller / User Connected & AP)
   const item1Index = checklistReport.items.findIndex(
@@ -76,16 +89,22 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
     if (!file) return;
 
     try {
-      const compressed = await compressImage(file, 1200, 1200, 0.85);
-      const currentRemark = item1?.remark || checklistReport.waReportPhotoCaption || '';
+      const compressed = await compressImage(file, 800, 800, 0.72);
+      const cur = latestChecklistRef.current;
+      const curItem1 =
+        cur.items.find((it) => it.no === 1 || it.taskList.toLowerCase().includes('unifi')) ||
+        cur.items[0];
+      const currentRemark = curItem1?.remark || cur.waReportPhotoCaption || '';
       const updated: DailyChecklistReport = {
-        ...checklistReport,
+        ...cur,
         waReportPhoto: compressed,
         waReportPhotoCaption: currentRemark,
+        isUserModified: true,
         updatedAt: Date.now(),
       };
+      latestChecklistRef.current = updated;
       onUpdateChecklist(updated);
-      showNotice('✓ Photo successfully uploaded for WA Report.');
+      showNotice('✓ Photo successfully uploaded & synced to Database.');
     } catch (err) {
       console.error('Failed to process image:', err);
       showNotice('Failed to process image. Please try again.');
@@ -99,11 +118,14 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
   };
 
   const handleConfirmRemovePhoto = () => {
+    const cur = latestChecklistRef.current;
     const updated: DailyChecklistReport = {
-      ...checklistReport,
+      ...cur,
       waReportPhoto: '',
+      isUserModified: true,
       updatedAt: Date.now(),
     };
+    latestChecklistRef.current = updated;
     onUpdateChecklist(updated);
     setShowDeletePhotoModal(false);
     showNotice('✓ Photo No. 4 (User Connected & AP) successfully deleted.');
@@ -111,7 +133,8 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
 
   // Two-way instant sync: changing remark in Card 4 immediately updates Task #1 in checklist & waReportPhotoCaption
   const handleItem1RemarkChange = (newRemark: string) => {
-    const newItems = [...checklistReport.items];
+    const cur = latestChecklistRef.current;
+    const newItems = [...cur.items];
     const targetIdx = item1Index !== -1 ? item1Index : 0;
     if (newItems[targetIdx]) {
       newItems[targetIdx] = {
@@ -120,11 +143,13 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
       };
     }
     const updated: DailyChecklistReport = {
-      ...checklistReport,
+      ...cur,
       items: newItems,
       waReportPhotoCaption: newRemark,
+      isUserModified: true,
       updatedAt: Date.now(),
     };
+    latestChecklistRef.current = updated;
     onUpdateChecklist(updated);
   };
 
@@ -848,14 +873,17 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                         <td className="py-0.5 px-1 text-center">
                           <span
                             className={`inline-block px-1 py-0.5 rounded text-[7.5px] font-bold ${
-                              item.shift === 'evening'
+                              isTaskEvening(item)
                                 ? 'bg-indigo-100 text-indigo-900'
                                 : 'bg-amber-100 text-amber-900'
                             }`}
-                            title={`Shift: ${item.shift || 'morning'} | PIC: ${item.personIncharge || '-'}`}
+                            title={`Shift: ${isTaskEvening(item) ? 'evening' : 'morning'} | PIC: ${item.personIncharge || '-'}`}
                           >
-                            {item.shift === 'evening' ? '🌙 ' : '☀️ '}
-                            {item.personIncharge || (item.shift === 'evening' ? 'Evening' : 'Morning')}
+                            {isTaskEvening(item) ? '🌙 ' : '☀️ '}
+                            {item.personIncharge ||
+                              (isTaskEvening(item)
+                                ? checklistReport.eveningShiftPic || 'Evening'
+                                : checklistReport.morningShiftPic || 'Morning')}
                           </span>
                         </td>
                         <td className="py-0.5 px-1 text-center">
@@ -920,14 +948,17 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                         <td className="py-0.5 px-1 text-center">
                           <span
                             className={`inline-block px-1 py-0.5 rounded text-[7.5px] font-bold ${
-                              item.shift === 'evening'
+                              isTaskEvening(item)
                                 ? 'bg-indigo-100 text-indigo-900'
                                 : 'bg-amber-100 text-amber-900'
                             }`}
-                            title={`Shift: ${item.shift || 'morning'} | PIC: ${item.personIncharge || '-'}`}
+                            title={`Shift: ${isTaskEvening(item) ? 'evening' : 'morning'} | PIC: ${item.personIncharge || '-'}`}
                           >
-                            {item.shift === 'evening' ? '🌙 ' : '☀️ '}
-                            {item.personIncharge || (item.shift === 'evening' ? 'Evening' : 'Morning')}
+                            {isTaskEvening(item) ? '🌙 ' : '☀️ '}
+                            {item.personIncharge ||
+                              (isTaskEvening(item)
+                                ? checklistReport.eveningShiftPic || 'Evening'
+                                : checklistReport.morningShiftPic || 'Morning')}
                           </span>
                         </td>
                         <td className="py-0.5 px-1 text-center">

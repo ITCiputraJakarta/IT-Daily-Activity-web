@@ -74,6 +74,12 @@ export function createDefaultChecklistReport(dateStr?: string): DailyChecklistRe
  */
 export function isChecklistCustomModified(report: DailyChecklistReport | null | undefined): boolean {
   if (!report) return false;
+  if (report.isUserModified === true) {
+    return true;
+  }
+  if (Boolean(report.waReportPhoto?.trim())) {
+    return true;
+  }
   if (typeof report.isUserModified === 'boolean') {
     return report.isUserModified;
   }
@@ -92,6 +98,7 @@ export function isChecklistCustomModified(report: DailyChecklistReport | null | 
     if (!def) return true;
     return (
       Boolean(it.personIncharge?.trim()) ||
+      it.shift !== def.shift ||
       it.status !== def.status ||
       it.remark !== def.remark ||
       it.taskList !== def.taskList
@@ -132,7 +139,7 @@ export function createChecklistFromPrevious(
     waReportPhotoCaption: clonedItems[0]?.remark || previousReport.waReportPhotoCaption || '',
     isUserModified: false,
     createdAt: now,
-    updatedAt: now,
+    updatedAt: 0,
     expiresAt: now + 60 * 24 * 60 * 60 * 1000,
   };
 }

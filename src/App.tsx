@@ -9,7 +9,8 @@ import {
   createDefaultActivityReport,
   createDefaultChecklistReport,
   createChecklistFromPrevious,
-  isChecklistCustomModified
+  isChecklistCustomModified,
+  isActivityCustomModified
 } from './data/defaults';
 import {
   loadTeamMembers,
@@ -45,6 +46,7 @@ import {
   subscribeToTeamMembers,
   subscribeToClientUsers,
   subscribeToAppLogo,
+  syncPendingLocalReportsToCloud,
   DbConnectionResult
 } from './services/firebase';
 import { DatabaseStatusModal } from './components/DatabaseStatusModal';
@@ -381,19 +383,19 @@ export default function App() {
     }
   };
 
-  // Wrapper for Daily Activity edits: updates state, ref, and immediate local storage
+  // Wrapper for Daily Activity edits: marks as user-modified, updates state, ref, and immediate local storage
   const handleActivityChange = useCallback((updated: DailyActivityReport) => {
     const nextReport: DailyActivityReport = {
       ...updated,
+      isUserModified: true,
       updatedAt: Date.now(),
     };
     latestActRef.current = nextReport;
     saveActivityReportLocalImmediate(nextReport);
-    saveActivityReport(nextReport).catch(console.error);
     setActivityReport(nextReport);
   }, []);
 
-  // Wrapper for Daily Checklist edits: marks as user-modified, updates state, ref, and immediate local storage (plus forward propagation)
+  // Wrapper for Daily Checklist edits: marks as user-modified, updates state, ref, and immediate local storage (plus two-way sync with Activity & WA Report)
   const handleChecklistChange = useCallback((updated: DailyChecklistReport) => {
     const item1 = updated.items.find((it) => it.no === 1 || it.taskList.toLowerCase().includes('unifi'));
     const nextReport: DailyChecklistReport = {
@@ -404,8 +406,43 @@ export default function App() {
     };
     latestCheckRef.current = nextReport;
     saveChecklistReportLocalImmediate(nextReport);
-    saveChecklistReport(nextReport).catch(console.error);
     setChecklistReport(nextReport);
+
+    // Two-way sync: if Task #2 (Bandwidth statistic) remark has MAX/AVG/CURRENT values, sync back to Daily Activity Internet Traffic
+    const item2 = updated.items.find((it) => it.no === 2 || it.taskList.toLowerCase().includes('bandwidth'));
+    if (item2?.remark && item2.remark !== '-') {
+      const mMatch = item2.remark.match(/MAX:\s*([^\s|]+)/i);
+      const aMatch = item2.remark.match(/AVG:\s*([^\s|]+)/i);
+      const cMatch = item2.remark.match(/(?:CURRENT|CR):\s*([^\s|]+)/i);
+      if (mMatch || aMatch || cMatch) {
+        const cleanNum = (v?: string) => (!v || v === '-' ? '' : v.replace(/mbps/gi, '').trim());
+        const newMax = mMatch ? cleanNum(mMatch[1]) : latestActRef.current.internetTraffic.maxIn || '';
+        const newAvg = aMatch ? cleanNum(aMatch[1]) : latestActRef.current.internetTraffic.avgIn || '';
+        const newCur = cMatch ? cleanNum(cMatch[1]) : latestActRef.current.internetTraffic.currentIn || '';
+
+        const curTraffic = latestActRef.current.internetTraffic;
+        if (
+          newMax !== (curTraffic.maxIn || '') ||
+          newAvg !== (curTraffic.avgIn || '') ||
+          newCur !== (curTraffic.currentIn || '')
+        ) {
+          const nextAct: DailyActivityReport = {
+            ...latestActRef.current,
+            internetTraffic: {
+              ...curTraffic,
+              maxIn: newMax,
+              avgIn: newAvg,
+              currentIn: newCur,
+            },
+            isUserModified: true,
+            updatedAt: Date.now(),
+          };
+          latestActRef.current = nextAct;
+          saveActivityReportLocalImmediate(nextAct);
+          setActivityReport(nextAct);
+        }
+      }
+    }
   }, []);
 
   // Explicitly re-sync current date's checklist from previous date
@@ -442,17 +479,26 @@ export default function App() {
 
   // Auto-save immediately to Firestore & Local Storage when image is uploaded or modified
   const handleAutoSaveActivity = useCallback(async (updated: DailyActivityReport) => {
+    if (actDebounceTimerRef.current) {
+      clearTimeout(actDebounceTimerRef.current);
+      actDebounceTimerRef.current = null;
+    }
+
     setIsSaving(true);
     setSaveStatusText('Menyimpan foto ke database...');
     try {
       const nextReport: DailyActivityReport = {
         ...updated,
+        isUserModified: true,
         updatedAt: Date.now(),
       };
       latestActRef.current = nextReport;
+      setActivityReport(nextReport);
       saveActivityReportLocalImmediate(nextReport);
+      const nextJson = JSON.stringify(nextReport);
+      lastSavedActRef.current = nextJson;
+
       const res = await saveActivityReport(nextReport);
-      lastSavedActRef.current = JSON.stringify(nextReport);
       setSaveStatusText(
         res.isLocalFallback
           ? '✓ Foto Tersimpan di Cadangan Lokal (Offline)'
@@ -488,6 +534,7 @@ export default function App() {
   // Run connection check, load cloud logo, real-time sync, and auto-cleanup on mount
   useEffect(() => {
     handleCheckDbConnection();
+    syncPendingLocalReportsToCloud();
 
     // Initial check if cloud has a synced logo
     loadAppLogoFromCloud().then((cloudLogo) => {
@@ -604,6 +651,37 @@ export default function App() {
     }
   }, []);
 
+  // Ensure any edits or uploaded images are flushed if user switches tabs or closes/reloads window
+  useEffect(() => {
+    const handleVisibilityOrUnload = () => {
+      if (isDateLoadedRef.current === selectedDate) {
+        const currentAct = latestActRef.current;
+        const currentCheck = latestCheckRef.current;
+        if (currentAct && currentAct.date === selectedDate && isActivityCustomModified(currentAct)) {
+          saveActivityReportLocalImmediate(currentAct);
+          saveActivityReport(currentAct).catch(() => {});
+        }
+        if (currentCheck && currentCheck.date === selectedDate && isChecklistCustomModified(currentCheck)) {
+          saveChecklistReportLocalImmediate(currentCheck);
+          saveChecklistReport(currentCheck).catch(() => {});
+        }
+      }
+    };
+
+    window.addEventListener('beforeunload', handleVisibilityOrUnload);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        handleVisibilityOrUnload();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleVisibilityOrUnload);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [selectedDate]);
+
   // Safe Date Selector: flushes pending changes on current date before loading target date
   const handleSelectDate = useCallback(
     async (newDate: string) => {
@@ -620,8 +698,14 @@ export default function App() {
 
     async function loadData() {
       // Clear any pending timers
-      if (actDebounceTimerRef.current) clearTimeout(actDebounceTimerRef.current);
-      if (checkDebounceTimerRef.current) clearTimeout(checkDebounceTimerRef.current);
+      if (actDebounceTimerRef.current) {
+        clearTimeout(actDebounceTimerRef.current);
+        actDebounceTimerRef.current = null;
+      }
+      if (checkDebounceTimerRef.current) {
+        clearTimeout(checkDebounceTimerRef.current);
+        checkDebounceTimerRef.current = null;
+      }
 
       setIsSaving(true);
       setSaveStatusText('Memuat laporan...');
@@ -679,6 +763,51 @@ export default function App() {
           shouldAutoSaveChecklist = true;
         }
 
+        // 3. Ensure cross-tab synchronization between Activity Traffic (IN) and Checklist Item #2 on load
+        const cleanNum = (v?: string) => (!v || v === '-' ? '' : v.replace(/mbps/gi, '').trim());
+        const actMax = cleanNum(finalAct.internetTraffic?.maxIn);
+        const actAvg = cleanNum(finalAct.internetTraffic?.avgIn);
+        const actCur = cleanNum(finalAct.internetTraffic?.currentIn);
+        const bwIdx = finalCheck.items.findIndex(
+          (it) => it.no === 2 || it.taskList.toLowerCase().includes('bandwidth')
+        );
+
+        if (actMax || actAvg || actCur) {
+          const syncedRemark = `MAX: ${actMax || '-'} Mbps | AVG: ${actAvg || '-'} Mbps | CURRENT: ${actCur || '-'} Mbps`;
+          if (bwIdx !== -1 && finalCheck.items[bwIdx].remark !== syncedRemark) {
+            const newItems = [...finalCheck.items];
+            newItems[bwIdx] = { ...newItems[bwIdx], remark: syncedRemark };
+            finalCheck = { ...finalCheck, items: newItems };
+          }
+        } else if (isExplicitlyEditedOnThisDate && bwIdx !== -1) {
+          const bwRemark = finalCheck.items[bwIdx].remark || '';
+          const mMatch = bwRemark.match(/MAX:\s*([^\s|]+)/i);
+          const aMatch = bwRemark.match(/AVG:\s*([^\s|]+)/i);
+          const cMatch = bwRemark.match(/(?:CURRENT|CR):\s*([^\s|]+)/i);
+          if (mMatch || aMatch || cMatch) {
+            finalAct = {
+              ...finalAct,
+              internetTraffic: {
+                ...finalAct.internetTraffic,
+                maxIn: mMatch ? cleanNum(mMatch[1]) : '',
+                avgIn: aMatch ? cleanNum(aMatch[1]) : '',
+                currentIn: cMatch ? cleanNum(cMatch[1]) : '',
+              },
+            };
+          }
+        }
+
+        // Ensure Task #1 remark and waReportPhotoCaption are synchronized
+        const item1 = finalCheck.items.find(
+          (it) => it.no === 1 || it.taskList.toLowerCase().includes('unifi')
+        );
+        if (item1 && finalCheck.waReportPhotoCaption !== item1.remark) {
+          finalCheck = {
+            ...finalCheck,
+            waReportPhotoCaption: item1.remark,
+          };
+        }
+
         // Lock in references before state update
         const actStr = JSON.stringify(finalAct);
         const checkStr = JSON.stringify(finalCheck);
@@ -691,12 +820,12 @@ export default function App() {
         setActivityReport(finalAct);
         setChecklistReport(finalCheck);
 
-        // Snapshot initial activity report in localStorage so historical dates retain their PIC/User state
+        // Snapshot initial activity report in localStorage (with updatedAt: 0 so it never overrides cloud data)
         if (shouldSnapshotActivity) {
           saveActivityReportLocalImmediate(finalAct);
         }
 
-        // Auto-save inherited checklist (and initial activity) so the date is persisted immediately
+        // Auto-save inherited checklist so the date is persisted immediately
         if (shouldAutoSaveChecklist) {
           saveChecklistReportLocalImmediate(finalCheck);
           const saveRes = await saveChecklistReport(finalCheck);
@@ -713,7 +842,7 @@ export default function App() {
         }
 
         if (!isCancelled) {
-          if (isExplicitlyEditedOnThisDate || loadedAct) {
+          if (isExplicitlyEditedOnThisDate || (loadedAct && isActivityCustomModified(loadedAct))) {
             setNotification(`Arsip laporan tanggal ${selectedDate} dimuat`);
           } else if (prevCheck) {
             setNotification(
@@ -788,13 +917,17 @@ export default function App() {
 
     if (actDebounceTimerRef.current) {
       clearTimeout(actDebounceTimerRef.current);
+      actDebounceTimerRef.current = null;
     }
 
     actDebounceTimerRef.current = setTimeout(async () => {
+      actDebounceTimerRef.current = null;
       try {
         setIsSaving(true);
-        const res = await saveActivityReport(activityReport);
-        lastSavedActRef.current = currentJson;
+        const latestToSave = latestActRef.current.date === selectedDate ? latestActRef.current : activityReport;
+        saveActivityReportLocalImmediate(latestToSave);
+        const res = await saveActivityReport(latestToSave);
+        lastSavedActRef.current = JSON.stringify(latestToSave);
         setSaveStatusText(
           res.isLocalFallback
             ? '✓ Tersimpan di Cadangan Lokal (Offline)'
@@ -807,11 +940,12 @@ export default function App() {
       } finally {
         setIsSaving(false);
       }
-    }, 350); // 350ms fast debounce on keystroke
+    }, 300); // 300ms fast debounce on keystroke
 
     return () => {
       if (actDebounceTimerRef.current) {
         clearTimeout(actDebounceTimerRef.current);
+        actDebounceTimerRef.current = null;
       }
     };
   }, [activityReport, selectedDate]);
@@ -828,13 +962,17 @@ export default function App() {
 
     if (checkDebounceTimerRef.current) {
       clearTimeout(checkDebounceTimerRef.current);
+      checkDebounceTimerRef.current = null;
     }
 
     checkDebounceTimerRef.current = setTimeout(async () => {
+      checkDebounceTimerRef.current = null;
       try {
         setIsSaving(true);
-        const res = await saveChecklistReport(checklistReport);
-        lastSavedCheckRef.current = currentJson;
+        const latestToSave = latestCheckRef.current.date === selectedDate ? latestCheckRef.current : checklistReport;
+        saveChecklistReportLocalImmediate(latestToSave);
+        const res = await saveChecklistReport(latestToSave);
+        lastSavedCheckRef.current = JSON.stringify(latestToSave);
         setSaveStatusText(
           res.isLocalFallback
             ? '✓ Tersimpan di Cadangan Lokal (Offline)'
@@ -847,18 +985,23 @@ export default function App() {
       } finally {
         setIsSaving(false);
       }
-    }, 350); // 350ms fast debounce
+    }, 300); // 300ms fast debounce
 
     return () => {
       if (checkDebounceTimerRef.current) {
         clearTimeout(checkDebounceTimerRef.current);
+        checkDebounceTimerRef.current = null;
       }
     };
   }, [checklistReport, selectedDate]);
 
   // Synchronize Internet Traffic (IN) from Activity Section 3 to Checklist item #2
   const handleSyncTrafficToChecklist = (mIn: string, aIn: string, cIn: string) => {
-    const formattedRemark = `MAX: ${mIn || '-'} Mbps | AVG: ${aIn || '-'} Mbps | CURRENT: ${cIn || '-'} Mbps`;
+    const cleanVal = (v: string) => v.replace(/mbps/gi, '').trim();
+    const m = cleanVal(mIn);
+    const a = cleanVal(aIn);
+    const c = cleanVal(cIn);
+    const formattedRemark = `MAX: ${m || '-'} Mbps | AVG: ${a || '-'} Mbps | CURRENT: ${c || '-'} Mbps`;
     setChecklistReport((prev) => {
       const items = [...prev.items];
       let targetIdx = items.findIndex((it) =>
@@ -876,6 +1019,7 @@ export default function App() {
       const next: DailyChecklistReport = {
         ...prev,
         items,
+        isUserModified: true,
         updatedAt: Date.now(),
       };
       latestCheckRef.current = next;
@@ -886,39 +1030,53 @@ export default function App() {
 
   // Instant Manual Save trigger (if user clicks Simpan button)
   const handleSave = async () => {
+    if (actDebounceTimerRef.current) {
+      clearTimeout(actDebounceTimerRef.current);
+      actDebounceTimerRef.current = null;
+    }
+    if (checkDebounceTimerRef.current) {
+      clearTimeout(checkDebounceTimerRef.current);
+      checkDebounceTimerRef.current = null;
+    }
+
     setIsSaving(true);
     setSaveStatusText('Menyimpan data...');
 
     try {
-      if (activeTab === 'activity') {
-        saveActivityReportLocalImmediate(activityReport);
-        const res = await saveActivityReport(activityReport);
-        lastSavedActRef.current = JSON.stringify(activityReport);
-        setSaveStatusText(
-          res.isLocalFallback
-            ? '✓ Tersimpan di Cadangan Lokal (Offline)'
-            : '✓ Tersimpan otomatis ke Cloud'
-        );
-        setIsDbOnline(!res.isLocalFallback);
-      } else {
-        const checkToSave: DailyChecklistReport = {
-          ...checklistReport,
-          isUserModified: true,
-          updatedAt: Date.now(),
-        };
-        latestCheckRef.current = checkToSave;
-        setChecklistReport(checkToSave);
-        saveChecklistReportLocalImmediate(checkToSave);
-        const res = await saveChecklistReport(checkToSave);
-        lastSavedCheckRef.current = JSON.stringify(checkToSave);
-        setSaveStatusText(
-          res.isLocalFallback
-            ? '✓ Tersimpan di Cadangan Lokal (Offline)'
-            : '✓ Tersimpan otomatis ke Cloud'
-        );
-        setIsDbOnline(!res.isLocalFallback);
-      }
-      setNotification('✓ Data laporan berhasil disimpan!');
+      const actToSave: DailyActivityReport = {
+        ...latestActRef.current,
+        isUserModified: true,
+        updatedAt: Date.now(),
+      };
+      latestActRef.current = actToSave;
+      setActivityReport(actToSave);
+      saveActivityReportLocalImmediate(actToSave);
+
+      const checkToSave: DailyChecklistReport = {
+        ...latestCheckRef.current,
+        isUserModified: true,
+        updatedAt: Date.now(),
+      };
+      latestCheckRef.current = checkToSave;
+      setChecklistReport(checkToSave);
+      saveChecklistReportLocalImmediate(checkToSave);
+
+      const [actRes, checkRes] = await Promise.all([
+        saveActivityReport(actToSave),
+        saveChecklistReport(checkToSave),
+      ]);
+
+      lastSavedActRef.current = JSON.stringify(actToSave);
+      lastSavedCheckRef.current = JSON.stringify(checkToSave);
+
+      const isFallback = actRes.isLocalFallback || checkRes.isLocalFallback;
+      setSaveStatusText(
+        isFallback
+          ? '✓ Tersimpan di Cadangan Lokal (Offline)'
+          : '✓ Tersimpan otomatis ke Cloud'
+      );
+      setIsDbOnline(!isFallback);
+      setNotification('✓ Data laporan Activity, Checklist & WA Report berhasil disimpan!');
       setTimeout(() => setNotification(null), 3000);
     } catch (err) {
       console.error(err);

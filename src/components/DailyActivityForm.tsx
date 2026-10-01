@@ -63,6 +63,10 @@ export const DailyActivityForm: React.FC<Props> = ({
   const cameraInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
   const galleryInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
 
+  // Always keep a ref to the latest report so async image compression never overwrites recent edits
+  const latestReportRef = useRef<DailyActivityReport>(report);
+  latestReportRef.current = report;
+
   // Search, Filter & Sort state for Log Book Activities
   const [activitySearch, setActivitySearch] = useState('');
   const [filterPic, setFilterPic] = useState<string>('ALL');
@@ -94,72 +98,93 @@ export const DailyActivityForm: React.FC<Props> = ({
     key: K,
     value: DailyActivityReport[K]
   ) => {
-    onChange({
-      ...report,
+    const current = latestReportRef.current;
+    const next: DailyActivityReport = {
+      ...current,
       [key]: value,
-    });
+      isUserModified: true,
+    };
+    latestReportRef.current = next;
+    onChange(next);
   };
 
   // Handlers that update local state AND immediately persist images to Firestore & LocalStorage
   const handleLogBookImageChange = (index: number, dataUrl: string) => {
-    const updatedActs = [...report.logBookActivities];
+    const current = latestReportRef.current;
+    const updatedActs = [...current.logBookActivities];
     if (index >= 0 && index < updatedActs.length) {
       updatedActs[index] = { ...updatedActs[index], pictureUrl: dataUrl };
-      const updatedReport = {
-        ...report,
+      const updatedReport: DailyActivityReport = {
+        ...current,
         logBookActivities: updatedActs,
+        isUserModified: true,
       };
-      onChange(updatedReport);
+      latestReportRef.current = updatedReport;
       if (onAutoSaveActivity) {
         onAutoSaveActivity(updatedReport);
+      } else {
+        onChange(updatedReport);
       }
     }
   };
 
   const handleSaraImageChange = (dataUrl: string) => {
-    const updatedReport = {
-      ...report,
+    const current = latestReportRef.current;
+    const updatedReport: DailyActivityReport = {
+      ...current,
       saraActivity: {
-        ...report.saraActivity,
+        ...current.saraActivity,
         screenshotUrl: dataUrl,
       },
+      isUserModified: true,
     };
-    onChange(updatedReport);
+    latestReportRef.current = updatedReport;
     if (onAutoSaveActivity) {
       onAutoSaveActivity(updatedReport);
+    } else {
+      onChange(updatedReport);
     }
   };
 
   const handleTrafficImageChange = (dataUrl: string) => {
-    const updatedReport = {
-      ...report,
+    const current = latestReportRef.current;
+    const updatedReport: DailyActivityReport = {
+      ...current,
       internetTraffic: {
-        ...report.internetTraffic,
+        ...current.internetTraffic,
         screenshotUrl: dataUrl,
       },
+      isUserModified: true,
     };
-    onChange(updatedReport);
+    latestReportRef.current = updatedReport;
     if (onAutoSaveActivity) {
       onAutoSaveActivity(updatedReport);
+    } else {
+      onChange(updatedReport);
     }
   };
 
   const handleServerTempPhotoChange = (dataUrl: string) => {
-    const updatedReport = {
-      ...report,
+    const current = latestReportRef.current;
+    const updatedReport: DailyActivityReport = {
+      ...current,
       serverTemperature: {
-        ...report.serverTemperature,
+        ...current.serverTemperature,
         photoUrl: dataUrl,
       },
+      isUserModified: true,
     };
-    onChange(updatedReport);
+    latestReportRef.current = updatedReport;
     if (onAutoSaveActivity) {
       onAutoSaveActivity(updatedReport);
+    } else {
+      onChange(updatedReport);
     }
   };
 
   const updateLogBookItem = (index: number, partial: Partial<LogBookItem>) => {
-    const updated = [...report.logBookActivities];
+    const current = latestReportRef.current;
+    const updated = [...current.logBookActivities];
     if (index >= 0 && index < updated.length) {
       updated[index] = { ...updated[index], ...partial };
       updateField('logBookActivities', updated);
@@ -308,7 +333,8 @@ export const DailyActivityForm: React.FC<Props> = ({
   };
 
   const addLogBookItem = () => {
-    const nextNo = report.logBookActivities.length + 1;
+    const cur = latestReportRef.current;
+    const nextNo = cur.logBookActivities.length + 1;
     const defaultDept = 'FO (Front Office)';
     const defaultPic = activeMembers[0]?.name || '';
     const newItem: LogBookItem = {
@@ -322,24 +348,26 @@ export const DailyActivityForm: React.FC<Props> = ({
       pic: defaultPic,
       pictureUrl: '',
     };
-    updateField('logBookActivities', [...report.logBookActivities, newItem]);
+    updateField('logBookActivities', [...cur.logBookActivities, newItem]);
   };
 
   const removeLogBookItem = (index: number) => {
-    const updated = report.logBookActivities.filter((_, i) => i !== index);
+    const cur = latestReportRef.current;
+    const updated = cur.logBookActivities.filter((_, i) => i !== index);
     const renumbered = updated.map((item, idx) => ({ ...item, no: idx + 1 }));
     updateField('logBookActivities', renumbered);
   };
 
   const moveItem = (index: number, direction: 'up' | 'down') => {
+    const cur = latestReportRef.current;
     if (
       (direction === 'up' && index === 0) ||
-      (direction === 'down' && index === report.logBookActivities.length - 1)
+      (direction === 'down' && index === cur.logBookActivities.length - 1)
     ) {
       return;
     }
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    const items = [...report.logBookActivities];
+    const items = [...cur.logBookActivities];
     const temp = items[index];
     items[index] = items[targetIndex];
     items[targetIndex] = temp;
@@ -353,7 +381,7 @@ export const DailyActivityForm: React.FC<Props> = ({
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const compressed = await compressImage(file, 850, 850, 0.75);
+      const compressed = await compressImage(file, 800, 800, 0.72);
       callback(compressed);
       // Reset input value so user can take photo again with same file name if needed
       e.target.value = '';
@@ -364,16 +392,17 @@ export const DailyActivityForm: React.FC<Props> = ({
 
   // Sync traffic to Checklist item #2 when user changes IN traffic
   const handleTrafficInChange = (field: 'maxIn' | 'avgIn' | 'currentIn', value: string) => {
+    const cur = latestReportRef.current;
     const updatedTraffic = {
-      ...report.internetTraffic,
+      ...cur.internetTraffic,
       [field]: value,
     };
     updateField('internetTraffic', updatedTraffic);
 
     if (onSyncTrafficToChecklist) {
-      const mIn = field === 'maxIn' ? value : report.internetTraffic.maxIn || '';
-      const aIn = field === 'avgIn' ? value : report.internetTraffic.avgIn || '';
-      const cIn = field === 'currentIn' ? value : report.internetTraffic.currentIn || '';
+      const mIn = field === 'maxIn' ? value : cur.internetTraffic.maxIn || '';
+      const aIn = field === 'avgIn' ? value : cur.internetTraffic.avgIn || '';
+      const cIn = field === 'currentIn' ? value : cur.internetTraffic.currentIn || '';
       onSyncTrafficToChecklist(mIn, aIn, cIn);
     }
   };
