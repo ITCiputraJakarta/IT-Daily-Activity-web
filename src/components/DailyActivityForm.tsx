@@ -26,7 +26,8 @@ import {
   Search,
   ArrowUpDown,
   Filter,
-  AlertTriangle
+  AlertTriangle,
+  Zap
 } from 'lucide-react';
 
 interface Props {
@@ -44,7 +45,7 @@ interface Props {
   onAutoSaveActivity?: (updated: DailyActivityReport) => void;
 }
 
-type ActivitySortOption = 'no-asc' | 'user-asc' | 'dept-asc' | 'pic-asc' | 'status';
+type ActivitySortOption = 'no-desc' | 'no-asc' | 'user-asc' | 'dept-asc' | 'pic-asc' | 'status';
 
 export const DailyActivityForm: React.FC<Props> = ({
   report,
@@ -72,7 +73,44 @@ export const DailyActivityForm: React.FC<Props> = ({
   const [activitySearch, setActivitySearch] = useState('');
   const [filterPic, setFilterPic] = useState<string>('ALL');
   const [filterDept, setFilterDept] = useState<string>('ALL');
-  const [sortBy, setSortBy] = useState<ActivitySortOption>('no-asc');
+  
+  // Default to 'no-desc' (Aktivitas Terakhir di Atas) on mobile screens (< 768px) so users don't have to scroll
+  const [sortBy, setSortBy] = useState<ActivitySortOption>(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      return 'no-desc';
+    }
+    return 'no-asc';
+  });
+
+  const [highlightedIndex, setHighlightedIndex] = useState<number | null>(null);
+
+  // Identify the latest filled activity or the next empty one to be filled
+  const latestFilledOrNextIndex = useMemo(() => {
+    const acts = report.logBookActivities;
+    if (!acts || acts.length === 0) return 0;
+    let lastFilled = -1;
+    for (let i = 0; i < acts.length; i++) {
+      if (acts[i].details?.trim() || acts[i].clientName?.trim() || acts[i].pictureUrl?.trim()) {
+        lastFilled = i;
+      }
+    }
+    if (lastFilled === -1) return 0;
+    if (lastFilled < acts.length - 1) return lastFilled + 1;
+    return lastFilled;
+  }, [report.logBookActivities]);
+
+  const jumpToActivity = (idx: number) => {
+    setHighlightedIndex(idx);
+    const el = document.getElementById(`activity-card-${idx}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const textarea = el.querySelector('textarea');
+      if (textarea) {
+        setTimeout(() => textarea.focus(), 350);
+      }
+    }
+    setTimeout(() => setHighlightedIndex(null), 2500);
+  };
 
   const activeMembers = useMemo(
     () => teamMembers.filter((m) => m.isActive),
@@ -256,7 +294,9 @@ export const DailyActivityForm: React.FC<Props> = ({
         );
       });
 
-    if (sortBy === 'user-asc') {
+    if (sortBy === 'no-desc') {
+      indices.sort((a, b) => b.idx - a.idx);
+    } else if (sortBy === 'user-asc') {
       indices.sort((a, b) =>
         (a.act.clientName || a.act.userClient || '').localeCompare(
           b.act.clientName || b.act.userClient || ''
@@ -586,8 +626,21 @@ export const DailyActivityForm: React.FC<Props> = ({
           <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
             <button
               type="button"
+              onClick={() => setSortBy((prev) => (prev === 'no-desc' ? 'no-asc' : 'no-desc'))}
+              title="Balik urutan aktivitas: Poin Terakhir di Atas (Sangat cocok untuk layar HP) atau No. 1 di Atas"
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition border cursor-pointer ${
+                sortBy === 'no-desc'
+                  ? 'bg-amber-100 text-amber-950 border-amber-300 hover:bg-amber-200 shadow-2xs'
+                  : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
+              }`}
+            >
+              <ArrowUpDown className="w-3.5 h-3.5 text-amber-700" />
+              <span>{sortBy === 'no-desc' ? '⚡ Terakhir di Atas (HP)' : 'Urut #1 di Atas'}</span>
+            </button>
+            <button
+              type="button"
               onClick={onOpenUserModal}
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-lg text-xs font-semibold transition"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-lg text-xs font-semibold transition cursor-pointer"
             >
               <Building2 className="w-3.5 h-3.5 text-blue-700" />
               Kelola User
@@ -595,7 +648,7 @@ export const DailyActivityForm: React.FC<Props> = ({
             <button
               type="button"
               onClick={onOpenTeamModal}
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-semibold transition"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-semibold transition cursor-pointer"
             >
               <Users className="w-3.5 h-3.5 text-emerald-700" />
               Kelola PIC
@@ -604,7 +657,7 @@ export const DailyActivityForm: React.FC<Props> = ({
               type="button"
               onClick={handleResetToNewWorksheet}
               title="Reset hari ini ke lembar kerja baru bersih (3 aktivitas kosong)"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition border border-slate-300"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition border border-slate-300 cursor-pointer"
             >
               <RefreshCw className="w-3.5 h-3.5 text-slate-600" />
               Lembar Baru (3 Blank)
@@ -612,7 +665,7 @@ export const DailyActivityForm: React.FC<Props> = ({
             <button
               type="button"
               onClick={addLogBookItem}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition shadow-xs"
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               + Tambah Aktivitas
@@ -685,12 +738,62 @@ export const DailyActivityForm: React.FC<Props> = ({
               onChange={(e) => setSortBy(e.target.value as ActivitySortOption)}
               className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-300 bg-white font-semibold text-slate-700"
             >
-              <option value="no-asc">Sortir: No. Urut (Default)</option>
+              <option value="no-desc">Sortir: No. Terakhir di Atas (Terbaru / Mode HP)</option>
+              <option value="no-asc">Sortir: No. Urut #1 di Atas (Standar A4)</option>
               <option value="user-asc">Sortir: Nama User / Client (A-Z)</option>
               <option value="dept-asc">Sortir: Departemen User (A-Z)</option>
               <option value="pic-asc">Sortir: Nama PIC IT (A-Z)</option>
               <option value="status">Sortir: Status Pekerjaan</option>
             </select>
+          </div>
+        </div>
+
+        {/* Quick Jump & Mobile Point Navigation Bar */}
+        <div className="mb-4 p-2.5 sm:p-3 bg-linear-to-r from-amber-50/90 via-slate-50 to-emerald-50/70 border border-amber-200 rounded-xl flex flex-wrap items-center justify-between gap-2.5 shadow-2xs">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+              <Zap className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>Lompat ke Poin:</span>
+            </span>
+            <div className="flex items-center gap-1 flex-wrap">
+              {report.logBookActivities.map((act, i) => {
+                const isFilled = Boolean(act.details?.trim() || act.clientName?.trim() || act.pictureUrl?.trim());
+                const isNextTarget = i === latestFilledOrNextIndex;
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => jumpToActivity(i)}
+                    title={`Aktivitas #${i + 1}: ${act.details ? act.details.slice(0, 35) : '(Kosong - siap diisi)'}`}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+                      isNextTarget
+                        ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-xs ring-2 ring-amber-300'
+                        : isFilled
+                        ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300/80'
+                        : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-300'
+                    }`}
+                  >
+                    <span>#{i + 1}</span>
+                    {isFilled ? (
+                      <span className="text-[10px] text-emerald-700 font-black">✓</span>
+                    ) : isNextTarget ? (
+                      <span className="text-[10px] text-amber-200 font-black">★</span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => jumpToActivity(latestFilledOrNextIndex)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer"
+            >
+              <Zap className="w-3.5 h-3.5 text-amber-200" />
+              <span>Isi Poin Terakhir (#{latestFilledOrNextIndex + 1})</span>
+            </button>
           </div>
         </div>
 
@@ -718,7 +821,12 @@ export const DailyActivityForm: React.FC<Props> = ({
               return (
             <div
               key={act.id || index}
-              className="border border-slate-200 rounded-xl p-4 bg-slate-50/60 hover:bg-slate-50 transition shadow-2xs"
+              id={`activity-card-${index}`}
+              className={`border rounded-xl p-4 transition-all duration-300 shadow-2xs ${
+                index === highlightedIndex
+                  ? 'border-amber-500 bg-amber-50/60 ring-4 ring-amber-300/80 scale-[1.005]'
+                  : 'border-slate-200 bg-slate-50/60 hover:bg-slate-50'
+              }`}
             >
               {/* Header card with action buttons */}
               <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-200/80">
@@ -1361,7 +1469,7 @@ export const DailyActivityForm: React.FC<Props> = ({
           {/* IN TRAFFIC INPUTS ONLY */}
           <div className="p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-xl">
             <div className="text-xs font-bold text-emerald-950 mb-2 flex items-center justify-between">
-              <span>Input Nilai Trafik INd (Download):</span>
+              <span>Input Nilai Trafik IN (Download):</span>
               <span className="text-[11px] font-medium text-emerald-700">
                 Otomatis diupdate ke Checklist #2 (Bandwidth statistic)
               </span>
