@@ -23,6 +23,11 @@ import {
   isChecklistCustomModified,
   isActivityCustomModified
 } from '../data/defaults';
+import {
+  recordFirebaseRead,
+  recordFirebaseWrite,
+  recordFirebaseDelete
+} from './quotaTracker';
 
 export const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyCBuEIu1ITK40brP7SCWKQOQBdaMDFQx6M",
@@ -340,6 +345,7 @@ export async function saveActivityReport(report: DailyActivityReport): Promise<{
   try {
     const docRef = doc(db, COLLECTION_ACTIVITIES, report.date);
     await setDoc(docRef, cleanedReport);
+    recordFirebaseWrite(1, 'Simpan Daily Activity');
     return { success: true };
   } catch (error) {
     console.error('Firestore saveActivityReport error, using local fallback:', error);
@@ -370,6 +376,7 @@ export async function loadActivityReport(dateStr: string): Promise<DailyActivity
       const snap = await getDoc(docRef);
       if (snap.exists()) {
         cloudReport = snap.data() as DailyActivityReport;
+        recordFirebaseRead(1, 'Baca Daily Activity');
       }
     } catch (error) {
       console.warn('Firestore loadActivityReport failed, checking local storage:', error);
@@ -464,6 +471,7 @@ export async function saveChecklistReport(report: DailyChecklistReport): Promise
       }
     }
 
+    recordFirebaseWrite(1 + propagatedDates.length, 'Simpan Daily Checklist');
     return { success: true };
   } catch (error) {
     console.error('Firestore saveChecklistReport error, using local fallback:', error);
@@ -494,6 +502,7 @@ export async function loadChecklistReport(dateStr: string): Promise<DailyCheckli
       const snap = await getDoc(docRef);
       if (snap.exists()) {
         cloudReport = snap.data() as DailyChecklistReport;
+        recordFirebaseRead(1, 'Baca Daily Checklist');
       }
     } catch (error) {
       console.warn('Firestore loadChecklistReport failed, checking local storage:', error);
@@ -880,6 +889,7 @@ export function subscribeToActivityReport(
       (snapshot) => {
         if (snapshot.exists()) {
           const data = snapshot.data() as DailyActivityReport;
+          recordFirebaseRead(1, 'Realtime Sync Activity');
           onUpdate(data);
         }
       },
@@ -910,6 +920,7 @@ export function subscribeToChecklistReport(
       (snapshot) => {
         if (snapshot.exists()) {
           const data = snapshot.data() as DailyChecklistReport;
+          recordFirebaseRead(1, 'Realtime Sync Checklist');
           onUpdate(data);
         }
       },

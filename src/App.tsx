@@ -63,6 +63,7 @@ import { HistoryModal } from './components/HistoryModal';
 import { TeamManagementModal } from './components/TeamManagementModal';
 import { UserManagementModal } from './components/UserManagementModal';
 import { LogoManagerModal } from './components/LogoManagerModal';
+import { QuotaMonitorModal } from './components/QuotaMonitorModal';
 import {
   Download,
   CheckCircle,
@@ -99,6 +100,7 @@ export default function App() {
   const [isDbOnline, setIsDbOnline] = useState<boolean>(true);
   const [dbConnectionResult, setDbConnectionResult] = useState<DbConnectionResult | null>(null);
   const [isDbModalOpen, setIsDbModalOpen] = useState<boolean>(false);
+  const [isQuotaModalOpen, setIsQuotaModalOpen] = useState<boolean>(false);
   const [isCheckingDb, setIsCheckingDb] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [saveStatusText, setSaveStatusText] = useState<string>('✓ Tersimpan otomatis ke Cloud');
@@ -1176,6 +1178,7 @@ export default function App() {
         onOpenTeamModal={() => setIsTeamModalOpen(true)}
         onOpenUserModal={() => setIsUserModalOpen(true)}
         onOpenLogoModal={() => setIsLogoModalOpen(true)}
+        onOpenQuotaModal={() => setIsQuotaModalOpen(true)}
         customLogoUrl={customLogoUrl}
         saveStatusText={saveStatusText}
         isDbOnline={isDbOnline}
@@ -1418,6 +1421,15 @@ export default function App() {
         connectionResult={dbConnectionResult}
         onRecheck={() => handleCheckDbConnection(true)}
         isChecking={isCheckingDb}
+      />
+
+      {/* Cloud & Realtime Quota Monitor Modal (Firebase Spark & Vercel Hobby) */}
+      <QuotaMonitorModal
+        isOpen={isQuotaModalOpen}
+        onClose={() => setIsQuotaModalOpen(false)}
+        isDbOnline={isDbOnline}
+        onCheckDb={() => handleCheckDbConnection(true)}
+        isCheckingDb={isCheckingDb}
       />
     </div>
   );

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { CiputraLogo } from './CiputraLogo';
 import { addDaysToDateString, getTodayDateString } from '../utils/imageUtils';
 import {
@@ -13,15 +13,23 @@ import {
   Clock,
   Eye,
   Edit3,
-  HardDrive,
   Users,
   Building2,
-  Wifi,
-  WifiOff,
   Check,
   RefreshCw,
-  MessageSquare
+  MessageSquare,
+  Flame,
+  Globe,
+  Activity,
+  ChevronDown,
+  Database,
+  Image as ImageIcon
 } from 'lucide-react';
+import {
+  getQuotaStats,
+  subscribeQuotaStats,
+  QuotaDailyStats
+} from '../services/quotaTracker';
 
 interface Props {
   activeTab: 'activity' | 'checklist' | 'wareport';
@@ -39,6 +47,7 @@ interface Props {
   onOpenTeamModal: () => void;
   onOpenUserModal: () => void;
   onOpenLogoModal: () => void;
+  onOpenQuotaModal: () => void;
   customLogoUrl: string | null;
   saveStatusText?: string;
   isDbOnline: boolean;
@@ -62,12 +71,36 @@ export const Navbar: React.FC<Props> = ({
   onOpenTeamModal,
   onOpenUserModal,
   onOpenLogoModal,
+  onOpenQuotaModal,
   customLogoUrl,
   saveStatusText,
   isDbOnline,
   onCheckDb,
   checklistTaskCount,
 }) => {
+  const [quotaStats, setQuotaStats] = useState<QuotaDailyStats>(getQuotaStats());
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  // Subscribe to live quota metrics
+  useEffect(() => {
+    const unsub = subscribeQuotaStats((newStats) => {
+      setQuotaStats(newStats);
+    });
+    return unsub;
+  }, []);
+
+  // Close dropdown menu on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const handlePrevDay = () => {
     setSelectedDate(addDaysToDateString(selectedDate, -1));
   };
@@ -81,214 +114,299 @@ export const Navbar: React.FC<Props> = ({
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-xs no-print">
-      {/* Top Banner Row */}
-      <div className="max-w-7xl mx-auto px-3 sm:px-4 py-2.5 flex flex-wrap items-center justify-between gap-2.5">
-        {/* Brand */}
-        <div className="flex items-center gap-2">
-          <div className="h-9 w-24 sm:w-28 flex items-center justify-center shrink-0">
+    <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-xs no-print select-none">
+      {/* Top Bar: Compact, clean single row (Height ~52px) */}
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 py-1.5 flex items-center justify-between gap-2">
+        
+        {/* Left: Brand Logo & Title */}
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="h-8 w-20 sm:w-24 flex items-center justify-center shrink-0">
             <CiputraLogo size="sm" customLogoUrl={customLogoUrl} />
           </div>
-          <button
-            type="button"
-            onClick={onOpenLogoModal}
-            title="Klik untuk ganti atau upload logo dokumen"
-            className="p-1 px-1.5 text-slate-500 hover:text-emerald-700 hover:bg-slate-100 rounded-md transition text-[10px] font-bold border border-slate-200 flex items-center gap-1 shrink-0"
-          >
-            <span>Ganti Logo</span>
-          </button>
-          <div className="border-l border-slate-200 pl-2.5 hidden md:block">
-            <h1 className="text-xs sm:text-sm font-bold text-slate-900 leading-tight">
-              IT Daily Activity & Checklist Report
+          <div className="border-l border-slate-200 pl-2 hidden md:block min-w-0">
+            <h1 className="text-xs font-bold text-slate-900 leading-tight truncate">
+              IT Daily Activity &amp; Checklist
             </h1>
-            <p className="text-[10px] text-slate-500 font-medium">
-              Hotel Ciputra Jakarta · Format A4 Siap Cetak & Ekspor
+            <p className="text-[10px] text-slate-500 font-medium truncate">
+              Hotel Ciputra Jakarta · A4 Ready
             </p>
           </div>
         </div>
 
-        {/* Date Navigator */}
-        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 shrink-0">
+        {/* Center: Sleek Date Navigator */}
+        <div className="flex items-center gap-0.5 bg-slate-100 p-0.5 sm:p-1 rounded-xl border border-slate-200 shrink-0">
           <button
             type="button"
             onClick={handlePrevDay}
             title="Hari Sebelumnya"
-            className="p-1 rounded-lg hover:bg-white text-slate-600 transition"
+            className="p-1 rounded-lg hover:bg-white text-slate-600 transition cursor-pointer"
           >
-            <ChevronLeft className="w-4 h-4" />
+            <ChevronLeft className="w-3.5 h-3.5" />
           </button>
-          <div className="flex items-center gap-1 px-1.5">
-            <Calendar className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+          <div className="flex items-center gap-1 px-1 sm:px-1.5">
+            <Calendar className="w-3.5 h-3.5 text-emerald-700 shrink-0 hidden sm:block" />
             <input
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
-              className="bg-transparent text-xs font-bold text-slate-800 focus:outline-none cursor-pointer w-28"
+              className="bg-transparent text-xs font-bold text-slate-800 focus:outline-none cursor-pointer w-26 sm:w-28 text-center"
             />
           </div>
           <button
             type="button"
             onClick={handleNextDay}
             title="Hari Berikutnya"
-            className="p-1 rounded-lg hover:bg-white text-slate-600 transition"
+            className="p-1 rounded-lg hover:bg-white text-slate-600 transition cursor-pointer"
           >
-            <ChevronRight className="w-4 h-4" />
+            <ChevronRight className="w-3.5 h-3.5" />
           </button>
           <button
             type="button"
             onClick={handleToday}
-            className="text-[10px] font-bold text-emerald-800 hover:bg-white px-2 py-0.5 rounded-lg transition"
+            className="text-[10px] font-bold text-emerald-800 hover:bg-white px-1.5 sm:px-2 py-0.5 rounded-lg transition cursor-pointer"
           >
             Hari Ini
           </button>
         </div>
 
-        {/* Actions Group */}
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {/* Database Connection Pill */}
+        {/* Right: Cloud & Quota Monitor + Primary Actions + Kelola Dropdown */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          
+          {/* Live Realtime Cloud & Quota Pill (Clickable for full quota monitor) */}
           <button
             type="button"
-            onClick={onCheckDb}
-            title="Status koneksi Cloud Firebase Firestore & Keamanan (Klik untuk buka detail & uji koneksi)"
-            className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition border ${
-              isDbOnline
-                ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
-                : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
-            }`}
+            onClick={onOpenQuotaModal}
+            title="Monitor Real-time Kuota: Firebase Firestore & Vercel Edge Limits (Klik untuk buka rincian)"
+            className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border border-emerald-300 bg-emerald-50/90 hover:bg-emerald-100 text-emerald-950 text-xs font-bold transition shadow-2xs cursor-pointer"
           >
-            <span
-              className={`w-2 h-2 rounded-full ${
-                isDbOnline ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
-              }`}
-            />
-            <span className="hidden md:inline font-bold">
-              {isDbOnline ? 'Firebase Online' : 'Penyimpanan Lokal'}
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <span className="font-bold text-[11px] text-emerald-900 flex items-center gap-1">
+              Live
+            </span>
+            <span className="text-slate-300 hidden sm:inline">|</span>
+            <span className="hidden sm:inline-flex items-center gap-0.5 text-[10.5px] text-amber-800 font-semibold" title="Pemakaian Write Firebase Firestore hari ini">
+              <Flame className="w-3 h-3 text-amber-600" />
+              <span>{quotaStats.firebaseWrites}/20k</span>
+            </span>
+            <span className="text-slate-300 hidden lg:inline">|</span>
+            <span className="hidden lg:inline-flex items-center gap-0.5 text-[10.5px] text-blue-800 font-semibold" title="Vercel Edge Platform status & limit harian">
+              <Globe className="w-3 h-3 text-blue-600" />
+              <span>Vercel 100/d</span>
             </span>
           </button>
 
-          {/* Manage Client Users (Hotel Users / Departments) */}
-          <button
-            type="button"
-            onClick={onOpenUserModal}
-            title="Kelola daftar User / Client Hotel & Departemen (Terpisah dari PIC IT)"
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-blue-300 bg-blue-50/70 hover:bg-blue-100 text-blue-800 text-xs font-semibold transition"
-          >
-            <Building2 className="w-3.5 h-3.5 text-blue-700" />
-            <span className="hidden sm:inline">Kelola User</span>
-          </button>
-
-          {/* Manage Team Members (IT PIC) */}
-          <button
-            type="button"
-            onClick={onOpenTeamModal}
-            title="Kelola nama petugas teknis IT (PIC) & status aktif"
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-emerald-300 bg-emerald-50/70 hover:bg-emerald-100 text-emerald-800 text-xs font-semibold transition"
-          >
-            <Users className="w-3.5 h-3.5 text-emerald-700" />
-            <span className="hidden sm:inline">Kelola PIC</span>
-          </button>
-
-          {/* History button */}
-          <button
-            type="button"
-            onClick={onOpenHistory}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition"
-          >
-            <Clock className="w-3.5 h-3.5 text-slate-500" />
-            <span className="hidden sm:inline">Arsip</span>
-          </button>
-
-          {/* Save to Firestore */}
+          {/* Quick Manual Save */}
           <button
             type="button"
             onClick={onSave}
             disabled={isSaving}
-            title="Auto-save aktif. Klik untuk simpan instan sekarang."
-            className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition shadow-xs disabled:opacity-50"
+            title="Simpan dokumen sekarang ke Cloud Firestore & Cadangan Lokal"
+            className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition shadow-2xs disabled:opacity-50 cursor-pointer"
           >
             {isSaving ? (
               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
             ) : (
               <Save className="w-3.5 h-3.5" />
             )}
-            <span>{isSaving ? 'Menyimpan...' : 'Simpan'}</span>
+            <span className="hidden sm:inline">{isSaving ? 'Menyimpan...' : 'Simpan'}</span>
           </button>
 
-          {/* Print button */}
+          {/* Print A4 */}
           <button
             type="button"
             onClick={onPrint}
             title="Cetak langsung ke printer atau format PDF browser"
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold transition shadow-xs"
+            className="inline-flex items-center gap-1 px-2 py-1 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold transition shadow-2xs cursor-pointer"
           >
             <Printer className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">Cetak A4</span>
+            <span className="hidden md:inline">Cetak</span>
           </button>
 
-          {/* Download PDF button */}
+          {/* Download PDF */}
           <button
             type="button"
             onClick={onDownloadPdf}
             disabled={isGeneratingPdf}
-            title="Unduh langsung file PDF dokumen A4 sesuai template"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-xs font-bold transition shadow-xs disabled:opacity-50"
+            title="Unduh langsung file PDF dokumen A4 sesuai template Hotel Ciputra Jakarta"
+            className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-xs font-bold transition shadow-2xs disabled:opacity-50 cursor-pointer"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>{isGeneratingPdf ? 'Membuat PDF...' : 'Download PDF A4'}</span>
+            <span className="hidden sm:inline">{isGeneratingPdf ? 'PDF...' : 'PDF A4'}</span>
           </button>
+
+          {/* Kelola / Pengaturan Dropdown */}
+          <div className="relative" ref={menuRef}>
+            <button
+              type="button"
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              title="Menu Pengaturan &amp; Kelola Master Data"
+              className="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 rounded-lg text-xs font-bold transition shadow-2xs cursor-pointer"
+            >
+              <span>Kelola</span>
+              <ChevronDown className={`w-3.5 h-3.5 text-slate-600 transition-transform ${isMenuOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {/* Floating Dropdown Card */}
+            {isMenuOpen && (
+              <div className="absolute right-0 mt-1.5 w-60 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 text-xs animate-in fade-in zoom-in-95 duration-150">
+                <div className="px-3 py-1.5 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  Master Data &amp; Pengaturan
+                </div>
+                
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    onOpenTeamModal();
+                  }}
+                  className="w-full px-3 py-2 text-left text-slate-700 hover:bg-emerald-50 hover:text-emerald-900 flex items-center gap-2.5 transition cursor-pointer font-medium"
+                >
+                  <Users className="w-4 h-4 text-emerald-600" />
+                  <div>
+                    <span className="block font-bold">Kelola PIC IT</span>
+                    <span className="block text-[10px] text-slate-400 font-normal">Petugas teknis &amp; tim IT</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    onOpenUserModal();
+                  }}
+                  className="w-full px-3 py-2 text-left text-slate-700 hover:bg-blue-50 hover:text-blue-900 flex items-center gap-2.5 transition cursor-pointer font-medium"
+                >
+                  <Building2 className="w-4 h-4 text-blue-600" />
+                  <div>
+                    <span className="block font-bold">Kelola User / Departemen</span>
+                    <span className="block text-[10px] text-slate-400 font-normal">Klien hotel (Front Office, HK, dll)</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    onOpenLogoModal();
+                  }}
+                  className="w-full px-3 py-2 text-left text-slate-700 hover:bg-slate-100 flex items-center gap-2.5 transition cursor-pointer font-medium"
+                >
+                  <ImageIcon className="w-4 h-4 text-amber-600" />
+                  <div>
+                    <span className="block font-bold">Ganti / Upload Logo</span>
+                    <span className="block text-[10px] text-slate-400 font-normal">Kustomisasi logo dokumen</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    onOpenHistory();
+                  }}
+                  className="w-full px-3 py-2 text-left text-slate-700 hover:bg-slate-100 flex items-center gap-2.5 transition cursor-pointer font-medium"
+                >
+                  <Clock className="w-4 h-4 text-slate-500" />
+                  <div>
+                    <span className="block font-bold">Arsip &amp; Riwayat Dokumen</span>
+                    <span className="block text-[10px] text-slate-400 font-normal">Daftar arsip tanggal tersimpan</span>
+                  </div>
+                </button>
+
+                <div className="my-1 border-t border-slate-100"></div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    onOpenQuotaModal();
+                  }}
+                  className="w-full px-3 py-2 text-left text-slate-700 hover:bg-emerald-50 hover:text-emerald-900 flex items-center gap-2.5 transition cursor-pointer font-medium"
+                >
+                  <Activity className="w-4 h-4 text-emerald-600" />
+                  <div>
+                    <span className="block font-bold text-emerald-800">Detail Kuota Firebase &amp; Vercel</span>
+                    <span className="block text-[10px] text-emerald-600 font-normal">Pantau limit harian &amp; realtime</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    onCheckDb();
+                  }}
+                  className="w-full px-3 py-2 text-left text-slate-700 hover:bg-slate-100 flex items-center gap-2.5 transition cursor-pointer font-medium"
+                >
+                  <Database className="w-4 h-4 text-slate-600" />
+                  <div>
+                    <span className="block font-bold">Status Database &amp; Rules</span>
+                    <span className="block text-[10px] text-slate-400 font-normal">
+                      {isDbOnline ? '✓ Terhubung ke Cloud' : 'Mode Cadangan Lokal'}
+                    </span>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
+
         </div>
       </div>
 
-      {/* Sub-bar: Main Tabs & View Toggle */}
+      {/* Sub-bar: Clean Slim Tabs, Auto-Save Status & View Toggle (Height ~38px) */}
       <div className="bg-slate-50 border-t border-slate-200 px-3 sm:px-4">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-stretch sm:items-center justify-between py-1.5 gap-2">
-          {/* Main Tabs */}
+        <div className="max-w-7xl mx-auto flex items-center justify-between py-1 gap-2">
+          
+          {/* Main Document Tabs */}
           <div className="flex items-center gap-1">
             <button
               type="button"
               onClick={() => setActiveTab('activity')}
-              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+              className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
                 activeTab === 'activity'
-                  ? 'bg-emerald-700 text-white shadow-xs'
-                  : 'text-slate-700 hover:bg-slate-200/70'
+                  ? 'bg-emerald-700 text-white shadow-2xs'
+                  : 'text-slate-700 hover:bg-slate-200/80'
               }`}
             >
-              <FileText className="w-4 h-4" />
-              1. Daily Activity Report (2 Halaman)
+              <FileText className="w-3.5 h-3.5" />
+              <span>1. Daily Activity</span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('checklist')}
-              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+              className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
                 activeTab === 'checklist'
-                  ? 'bg-amber-600 text-white shadow-xs'
-                  : 'text-slate-700 hover:bg-slate-200/70'
+                  ? 'bg-amber-600 text-white shadow-2xs'
+                  : 'text-slate-700 hover:bg-slate-200/80'
               }`}
             >
-              <CheckSquare className="w-4 h-4" />
-              2. Daily Checklist ({checklistTaskCount} Task)
+              <CheckSquare className="w-3.5 h-3.5" />
+              <span>2. Daily Checklist ({checklistTaskCount})</span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('wareport')}
-              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+              className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
                 activeTab === 'wareport'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-slate-700 hover:bg-slate-200/70'
+                  ? 'bg-emerald-600 text-white shadow-2xs'
+                  : 'text-slate-700 hover:bg-slate-200/80'
               }`}
             >
-              <MessageSquare className="w-4 h-4 text-emerald-300" />
-              3. Wa report
+              <MessageSquare className="w-3.5 h-3.5 text-emerald-300" />
+              <span>3. WA Report</span>
             </button>
           </div>
 
-          {/* View Mode Toggle: Edit Form vs A4 Preview */}
-          <div className="flex items-center justify-between sm:justify-end gap-2.5">
+          {/* Auto-save Status & Mode Toggle */}
+          <div className="flex items-center gap-2">
             {saveStatusText && (
               <span
-                className={`text-[11px] font-semibold px-2 py-0.5 rounded-md flex items-center gap-1 border transition ${
+                className={`hidden md:inline-flex text-[11px] font-semibold px-2 py-0.5 rounded-md items-center gap-1 border transition ${
                   isSaving
                     ? 'text-blue-700 bg-blue-50 border-blue-200 animate-pulse'
                     : 'text-emerald-800 bg-emerald-50 border-emerald-200'
@@ -299,37 +417,39 @@ export const Navbar: React.FC<Props> = ({
                 ) : (
                   <Check className="w-3 h-3 shrink-0 text-emerald-600" />
                 )}
-                <span className="truncate max-w-[240px]">{saveStatusText}</span>
+                <span className="truncate max-w-[200px]">{saveStatusText}</span>
               </span>
             )}
 
+            {/* Input Form vs A4 Preview Toggle */}
             <div className="bg-white border border-slate-200 rounded-lg p-0.5 flex items-center shrink-0">
               <button
                 type="button"
                 onClick={() => setViewMode('edit')}
-                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold transition ${
+                className={`inline-flex items-center gap-1 px-2 sm:px-2.5 py-0.5 rounded-md text-xs font-semibold transition cursor-pointer ${
                   viewMode === 'edit'
                     ? 'bg-slate-800 text-white shadow-2xs'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <Edit3 className="w-3.5 h-3.5" />
-                Input Form
+                <Edit3 className="w-3 h-3" />
+                <span className="hidden sm:inline">Input Form</span>
               </button>
               <button
                 type="button"
                 onClick={() => setViewMode('preview')}
-                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold transition ${
+                className={`inline-flex items-center gap-1 px-2 sm:px-2.5 py-0.5 rounded-md text-xs font-semibold transition cursor-pointer ${
                   viewMode === 'preview'
                     ? 'bg-slate-800 text-white shadow-2xs'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <Eye className="w-3.5 h-3.5" />
-                Preview A4
+                <Eye className="w-3 h-3" />
+                <span className="hidden sm:inline">Preview A4</span>
               </button>
             </div>
           </div>
+
         </div>
       </div>
     </header>
