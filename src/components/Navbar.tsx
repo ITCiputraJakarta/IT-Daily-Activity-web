@@ -23,12 +23,14 @@ import {
   Activity,
   ChevronDown,
   Database,
-  Image as ImageIcon
+  Image as ImageIcon,
+  HardDrive
 } from 'lucide-react';
 import {
   getQuotaStats,
   subscribeQuotaStats,
-  QuotaDailyStats
+  QuotaDailyStats,
+  estimateCurrentStorage
 } from '../services/quotaTracker';
 
 interface Props {
@@ -48,6 +50,7 @@ interface Props {
   onOpenUserModal: () => void;
   onOpenLogoModal: () => void;
   onOpenQuotaModal: () => void;
+  onCleanupStorage?: () => void;
   customLogoUrl: string | null;
   saveStatusText?: string;
   isDbOnline: boolean;
@@ -72,6 +75,7 @@ export const Navbar: React.FC<Props> = ({
   onOpenUserModal,
   onOpenLogoModal,
   onOpenQuotaModal,
+  onCleanupStorage,
   customLogoUrl,
   saveStatusText,
   isDbOnline,
@@ -79,6 +83,7 @@ export const Navbar: React.FC<Props> = ({
   checklistTaskCount,
 }) => {
   const [quotaStats, setQuotaStats] = useState<QuotaDailyStats>(getQuotaStats());
+  const [storageInfo, setStorageInfo] = useState(estimateCurrentStorage());
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -86,6 +91,7 @@ export const Navbar: React.FC<Props> = ({
   useEffect(() => {
     const unsub = subscribeQuotaStats((newStats) => {
       setQuotaStats(newStats);
+      setStorageInfo(estimateCurrentStorage());
     });
     return unsub;
   }, []);
@@ -176,25 +182,50 @@ export const Navbar: React.FC<Props> = ({
           <button
             type="button"
             onClick={onOpenQuotaModal}
-            title="Monitor Real-time Kuota: Firebase Firestore & Vercel Edge Limits (Klik untuk buka rincian)"
-            className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border border-emerald-300 bg-emerald-50/90 hover:bg-emerald-100 text-emerald-950 text-xs font-bold transition shadow-2xs cursor-pointer"
+            title="Monitor Real-time Kuota: Firebase Firestore (Writes, Reads, Storage) & Vercel Daily Limits (Klik untuk buka rincian lengkap)"
+            className="inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg border border-emerald-300 bg-linear-to-r from-emerald-50 via-white to-slate-50 hover:from-emerald-100 hover:to-slate-100 text-slate-800 text-xs font-semibold transition shadow-2xs cursor-pointer group"
           >
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            {/* Live Indicator */}
+            <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-900 shrink-0">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <span>Live</span>
             </span>
-            <span className="font-bold text-[11px] text-emerald-900 flex items-center gap-1">
-              Live
+
+            <span className="text-slate-300">|</span>
+
+            {/* Firebase Quota Detailed */}
+            <span
+              className="flex items-center gap-1 text-[10.5px] text-amber-900 font-semibold"
+              title={`Firebase Spark Quota:\n• Writes: ${quotaStats.firebaseWrites}/20.000\n• Reads: ${quotaStats.firebaseReads}/50.000\n• Storage: ${storageInfo.formattedSize}/1GB`}
+            >
+              <Flame className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+              <span className="hidden xl:inline">Firebase:</span>
+              <span className="font-bold text-amber-950">{quotaStats.firebaseWrites}</span>
+              <span className="text-slate-400 text-[10px]">/20kW</span>
+              <span className="hidden sm:inline text-slate-300">·</span>
+              <span className="hidden sm:inline font-bold text-amber-950">{quotaStats.firebaseReads}</span>
+              <span className="hidden sm:inline text-slate-400 text-[10px]">/50kR</span>
+              <span className="hidden 2xl:inline text-slate-300">·</span>
+              <span className="hidden 2xl:inline text-slate-600 text-[10px]">{storageInfo.formattedSize}</span>
             </span>
-            <span className="text-slate-300 hidden sm:inline">|</span>
-            <span className="hidden sm:inline-flex items-center gap-0.5 text-[10.5px] text-amber-800 font-semibold" title="Pemakaian Write Firebase Firestore hari ini">
-              <Flame className="w-3 h-3 text-amber-600" />
-              <span>{quotaStats.firebaseWrites}/20k</span>
-            </span>
-            <span className="text-slate-300 hidden lg:inline">|</span>
-            <span className="hidden lg:inline-flex items-center gap-0.5 text-[10.5px] text-blue-800 font-semibold" title="Vercel Edge Platform status & limit harian">
-              <Globe className="w-3 h-3 text-blue-600" />
-              <span>Vercel 100/d</span>
+
+            <span className="text-slate-300 hidden md:inline">|</span>
+
+            {/* Vercel Daily Limit Live Realtime */}
+            <span
+              className="hidden md:flex items-center gap-1 text-[10.5px] text-blue-900 font-semibold"
+              title={`Vercel Hobby Edge Limits:\n• Daily Deployments: ${quotaStats.vercelDeployments}/100 per hari\n• Daily Requests: ${quotaStats.vercelRequests}/16.600 per hari`}
+            >
+              <Globe className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+              <span className="hidden xl:inline">Vercel:</span>
+              <span className="font-bold text-blue-950">{quotaStats.vercelDeployments}</span>
+              <span className="text-slate-400 text-[10px]">/100d</span>
+              <span className="hidden lg:inline text-slate-300">·</span>
+              <span className="hidden lg:inline font-bold text-blue-950">{quotaStats.vercelRequests}</span>
+              <span className="hidden lg:inline text-slate-400 text-[10px]">/16.6k</span>
             </span>
           </button>
 
@@ -349,6 +380,25 @@ export const Navbar: React.FC<Props> = ({
                     </span>
                   </div>
                 </button>
+
+                {onCleanupStorage && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      onCleanupStorage();
+                    }}
+                    className="w-full px-3 py-2 text-left text-slate-700 hover:bg-red-50 hover:text-red-900 flex items-center gap-2.5 transition cursor-pointer font-medium"
+                  >
+                    <HardDrive className="w-4 h-4 text-slate-500" />
+                    <div>
+                      <span className="block font-bold">Pembersihan Storage</span>
+                      <span className="block text-[10px] text-slate-400 font-normal">
+                        Hapus rekaman lama (&gt;60 hari)
+                      </span>
+                    </div>
+                  </button>
+                )}
               </div>
             )}
           </div>

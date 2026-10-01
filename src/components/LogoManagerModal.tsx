@@ -19,6 +19,7 @@ export const LogoManagerModal: React.FC<Props> = ({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [tempLogo, setTempLogo] = useState<string | null>(customLogoUrl);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -27,15 +28,17 @@ export const LogoManagerModal: React.FC<Props> = ({
     if (!file) return;
 
     setIsProcessing(true);
+    setErrorMsg(null);
     try {
       // Compress logo to max 500px width/height, preserving crispness
       const compressed = await compressImage(file, 500, 300, 0.9);
       setTempLogo(compressed);
     } catch (err) {
       console.error('Logo upload error:', err);
-      alert('Gagal memproses gambar logo.');
+      setErrorMsg('Gagal memproses file gambar logo. Pastikan file berupa JPG/PNG.');
     } finally {
       setIsProcessing(false);
+      e.target.value = '';
     }
   };
 
@@ -83,6 +86,12 @@ export const LogoManagerModal: React.FC<Props> = ({
               {tempLogo ? '✓ Memakai Logo Kustom Anda' : '✓ Memakai Logo Default Hotel Ciputra Jakarta'}
             </div>
           </div>
+
+          {errorMsg && (
+            <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 font-medium">
+              {errorMsg}
+            </div>
+          )}
 
           {/* Action buttons */}
           <div className="flex flex-col sm:flex-row gap-2 pt-1">

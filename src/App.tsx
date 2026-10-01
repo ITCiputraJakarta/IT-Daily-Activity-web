@@ -58,7 +58,6 @@ import { DailyActivityPrintView } from './components/DailyActivityPrintView';
 import { DailyChecklistForm } from './components/DailyChecklistForm';
 import { DailyChecklistPrintView } from './components/DailyChecklistPrintView';
 import { WaReportView } from './components/WaReportView';
-import { StorageCleanupBanner } from './components/StorageCleanupBanner';
 import { HistoryModal } from './components/HistoryModal';
 import { TeamManagementModal } from './components/TeamManagementModal';
 import { UserManagementModal } from './components/UserManagementModal';
@@ -875,7 +874,9 @@ export default function App() {
       if (actDebounceTimerRef.current) return;
       const localUpdated = latestActRef.current.updatedAt || 0;
       const remoteUpdated = remoteAct.updatedAt || 0;
-      if (remoteUpdated > localUpdated) {
+      const isRemoteModified = isActivityCustomModified(remoteAct);
+      const isLocalModified = isActivityCustomModified(latestActRef.current);
+      if ((isRemoteModified && !isLocalModified) || remoteUpdated > localUpdated) {
         latestActRef.current = remoteAct;
         lastSavedActRef.current = JSON.stringify(remoteAct);
         saveActivityReportLocalImmediate(remoteAct);
@@ -891,7 +892,9 @@ export default function App() {
       if (checkDebounceTimerRef.current) return;
       const localUpdated = latestCheckRef.current.updatedAt || 0;
       const remoteUpdated = remoteCheck.updatedAt || 0;
-      if (remoteUpdated > localUpdated) {
+      const isRemoteModified = isChecklistCustomModified(remoteCheck);
+      const isLocalModified = isChecklistCustomModified(latestCheckRef.current);
+      if ((isRemoteModified && !isLocalModified) || remoteUpdated > localUpdated) {
         latestCheckRef.current = remoteCheck;
         lastSavedCheckRef.current = JSON.stringify(remoteCheck);
         saveChecklistReportLocalImmediate(remoteCheck);
@@ -1142,13 +1145,8 @@ export default function App() {
       setTimeout(() => setNotification(null), 3500);
     } catch (err: any) {
       console.error('PDF export failed:', err);
-      if (
-        confirm(
-          `Gagal membuat file PDF langsung (${err.message}). Buka dialog Cetak Browser untuk simpan sebagai PDF?`
-        )
-      ) {
-        triggerNativePrint();
-      }
+      setNotification(`Gagal membuat file PDF langsung (${err.message}). Membuka dialog cetak browser...`);
+      setTimeout(() => triggerNativePrint(), 600);
     } finally {
       setIsGeneratingPdf(false);
       setPdfProgress(null);
@@ -1157,6 +1155,24 @@ export default function App() {
 
   const handlePrint = () => {
     triggerNativePrint();
+  };
+
+  const handleCleanupStorage = async () => {
+    try {
+      setNotification('Sedang memeriksa dan membersihkan data lama (>60 hari)...');
+      const res = await runAutoCleanupExpiredRecords();
+      const total = res.deletedActivities + res.deletedChecklists;
+      setNotification(
+        total > 0
+          ? `✓ Pembersihan berhasil: ${total} dokumen lama (>60 hari) telah dihapus.`
+          : '✓ Pemeriksaan selesai: Semua data dalam batas retensi 60 hari.'
+      );
+      setTimeout(() => setNotification(null), 4000);
+    } catch (err) {
+      console.error(err);
+      setNotification('Gagal menjalankan pembersihan storage.');
+      setTimeout(() => setNotification(null), 3000);
+    }
   };
 
   return (
@@ -1179,6 +1195,7 @@ export default function App() {
         onOpenUserModal={() => setIsUserModalOpen(true)}
         onOpenLogoModal={() => setIsLogoModalOpen(true)}
         onOpenQuotaModal={() => setIsQuotaModalOpen(true)}
+        onCleanupStorage={handleCleanupStorage}
         customLogoUrl={customLogoUrl}
         saveStatusText={saveStatusText}
         isDbOnline={isDbOnline}
@@ -1189,11 +1206,11 @@ export default function App() {
         checklistTaskCount={checklistReport.items.length}
       />
 
-      {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-4 py-4 md:py-6">
+      {/* Main Container - Tidy & Compact without pushing down */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-4 py-2 sm:py-3">
         {/* Notification Toast */}
         {notification && (
-          <div className="no-print mb-4 p-3 bg-slate-900 text-white text-xs font-semibold rounded-xl flex items-center justify-between shadow-lg border border-slate-700">
+          <div className="no-print mb-3 p-2.5 sm:p-3 bg-slate-900 text-white text-xs font-semibold rounded-xl flex items-center justify-between shadow-lg border border-slate-700 animate-in fade-in">
             <div className="flex items-center gap-2">
               <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
               <span>{notification}</span>
@@ -1201,52 +1218,12 @@ export default function App() {
             <button
               type="button"
               onClick={() => setNotification(null)}
-              className="text-slate-400 hover:text-white p-1"
+              className="text-slate-400 hover:text-white p-1 cursor-pointer"
             >
               ✕
             </button>
           </div>
         )}
-
-        {/* 30-Day Storage Retention Banner */}
-        <div className="no-print">
-          <StorageCleanupBanner onNotify={(msg) => setNotification(msg)} />
-        </div>
-
-        {/* Mode Info Bar */}
-        <div className="no-print flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 mb-5 bg-white p-3.5 rounded-xl border border-slate-200">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-              Laporan:
-            </span>
-            <span className="text-xs sm:text-sm font-bold text-slate-900">
-              {activeTab === 'activity'
-                ? 'IT Daily Activity Report (2 Halaman A4)'
-                : activeTab === 'checklist'
-                ? `IT Daily Checklist Activity (${checklistReport.items.length} Task)`
-                : 'IT WA Report - 1 Halaman Compact (WhatsApp Ready)'}
-            </span>
-            <span className="text-xs text-slate-600 font-medium">
-              · {formatReportDate(selectedDate)}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2 text-xs">
-            {activeTab === 'wareport' ? (
-              <span className="text-emerald-800 bg-emerald-50 border border-emerald-200 font-bold px-2.5 py-1 rounded-md">
-                Mode WA Report (A4 / 1920×1080 Siap Unduh JPG)
-              </span>
-            ) : viewMode === 'edit' ? (
-              <span className="text-slate-700 bg-slate-100 font-semibold px-2.5 py-1 rounded-md">
-                Mode Input Form (Mobile & Tablet Siap)
-              </span>
-            ) : (
-              <span className="text-emerald-800 bg-emerald-50 border border-emerald-200 font-bold px-2.5 py-1 rounded-md">
-                Mode Preview Layout A4 Asli
-              </span>
-            )}
-          </div>
-        </div>
 
         {/* Content Section (Interactive Edit, Preview, or WA Report) */}
         {activeTab === 'wareport' ? (
