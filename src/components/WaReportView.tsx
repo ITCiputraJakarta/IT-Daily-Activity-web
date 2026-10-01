@@ -31,6 +31,7 @@ import {
   FileImage,
   Sun,
   Moon,
+  AlertTriangle
 } from 'lucide-react';
 
 interface WaReportViewProps {
@@ -65,6 +66,26 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
   latestChecklistRef.current = checklistReport;
 
   const [showDeletePhotoModal, setShowDeletePhotoModal] = useState<boolean>(false);
+  const [changePhotoConfirmTarget, setChangePhotoConfirmTarget] = useState<{
+    sourceType: 'camera' | 'gallery';
+    title: string;
+    description: string;
+    actionLabel: string;
+  } | null>(null);
+
+  const handleConfirmChangePhoto = () => {
+    if (changePhotoConfirmTarget) {
+      const isCam = changePhotoConfirmTarget.sourceType === 'camera';
+      setChangePhotoConfirmTarget(null);
+      setTimeout(() => {
+        if (isCam) {
+          cameraInputRef.current?.click();
+        } else {
+          galleryInputRef.current?.click();
+        }
+      }, 50);
+    }
+  };
 
   // Helper to determine if a task belongs to Evening Shift (matches DailyChecklistForm)
   const isTaskEvening = (item: { shift?: string; personIncharge?: string }): boolean => {
@@ -729,17 +750,31 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                     <div className="no-export absolute top-1 right-1 flex items-center gap-1 bg-black/70 backdrop-blur-xs rounded p-1 shadow-xs">
                       <button
                         type="button"
-                        onClick={() => galleryInputRef.current?.click()}
+                        onClick={() => {
+                          setChangePhotoConfirmTarget({
+                            sourceType: 'gallery',
+                            title: 'Ganti Foto User Connected & AP (Galeri)?',
+                            description: 'Foto dokumentasi pada Kartu No. 4 sudah tersimpan. Memilih file baru dari galeri akan menggantikan foto saat ini. Apakah Anda yakin ingin melanjutkan?',
+                            actionLabel: 'Ya, Buka Galeri',
+                          });
+                        }}
                         title="Change Photo (Gallery)"
-                        className="p-1 text-white hover:text-amber-300 transition"
+                        className="p-1 text-white hover:text-amber-300 transition cursor-pointer"
                       >
                         <Upload className="w-3.5 h-3.5" />
                       </button>
                       <button
                         type="button"
-                        onClick={() => cameraInputRef.current?.click()}
+                        onClick={() => {
+                          setChangePhotoConfirmTarget({
+                            sourceType: 'camera',
+                            title: 'Foto Ulang User Connected & AP (Kamera)?',
+                            description: 'Foto dokumentasi pada Kartu No. 4 sudah tersimpan. Mengambil foto baru via kamera akan menggantikan foto saat ini. Apakah Anda yakin ingin melanjutkan?',
+                            actionLabel: 'Ya, Buka Kamera',
+                          });
+                        }}
                         title="Take Live Photo (Camera)"
-                        className="p-1 text-white hover:text-amber-300 transition"
+                        className="p-1 text-white hover:text-amber-300 transition cursor-pointer"
                       >
                         <Camera className="w-3.5 h-3.5" />
                       </button>
@@ -1091,6 +1126,44 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 Ya, Hapus
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Warning Confirmation Modal for Changing Photo No. 4 */}
+      {changePhotoConfirmTarget && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-12 h-12 rounded-full bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center mx-auto mb-3">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-bold text-slate-900 text-center mb-1">
+              {changePhotoConfirmTarget.title}
+            </h3>
+            <p className="text-xs text-slate-600 text-center mb-5 leading-relaxed">
+              {changePhotoConfirmTarget.description}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setChangePhotoConfirmTarget(null)}
+                className="flex-1 py-2.5 px-3 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 font-semibold text-xs transition text-center cursor-pointer"
+              >
+                Batal (Pertahankan)
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmChangePhoto}
+                className="flex-1 py-2.5 px-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs transition shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                {changePhotoConfirmTarget.sourceType === 'camera' ? (
+                  <Camera className="w-3.5 h-3.5" />
+                ) : (
+                  <Upload className="w-3.5 h-3.5" />
+                )}
+                {changePhotoConfirmTarget.actionLabel}
               </button>
             </div>
           </div>

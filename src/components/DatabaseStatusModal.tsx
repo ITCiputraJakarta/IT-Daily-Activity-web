@@ -12,9 +12,19 @@ import {
   Lock,
   Layers,
   FileCheck,
-  Clock
+  Clock,
+  Key,
+  FileText,
+  ExternalLink
 } from 'lucide-react';
 import { firebaseConfig, DbConnectionResult } from '../services/firebase';
+
+const ENV_CONFIG_TEXT = `VITE_FIREBASE_API_KEY=AIzaSyCBuEIu1ITK40brP7SCWKQOQBdaMDFQx6M
+VITE_FIREBASE_AUTH_DOMAIN=daily-ctivity-itbg.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=daily-ctivity-itbg
+VITE_FIREBASE_STORAGE_BUCKET=daily-ctivity-itbg.firebasestorage.app
+VITE_FIREBASE_MESSAGING_SENDER_ID=927845263252
+VITE_FIREBASE_APP_ID=1:927845263252:web:92522c80b69caf611a1181`;
 
 interface Props {
   isOpen: boolean;
@@ -89,7 +99,9 @@ export const DatabaseStatusModal: React.FC<Props> = ({
   isChecking,
 }) => {
   const [copied, setCopied] = useState(false);
-  const [activeTab, setActiveTab] = useState<'status' | 'security' | 'rules'>('status');
+  const [copiedEnv, setCopiedEnv] = useState(false);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'status' | 'security' | 'rules' | 'env'>('status');
 
   if (!isOpen) return null;
 
@@ -100,6 +112,26 @@ export const DatabaseStatusModal: React.FC<Props> = ({
       setTimeout(() => setCopied(false), 2500);
     } catch (e) {
       console.error('Failed to copy rules:', e);
+    }
+  };
+
+  const handleCopyEnv = async () => {
+    try {
+      await navigator.clipboard.writeText(ENV_CONFIG_TEXT);
+      setCopiedEnv(true);
+      setTimeout(() => setCopiedEnv(false), 2500);
+    } catch (e) {
+      console.error('Failed to copy env:', e);
+    }
+  };
+
+  const handleCopySingle = async (key: string, val: string) => {
+    try {
+      await navigator.clipboard.writeText(`${key}=${val}`);
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey(null), 2000);
+    } catch (e) {
+      console.error('Failed to copy single key:', e);
     }
   };
 
@@ -180,6 +212,18 @@ export const DatabaseStatusModal: React.FC<Props> = ({
           >
             <Lock className="w-4 h-4" />
             <span>Aturan Firestore.rules</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('env')}
+            className={`py-3 px-3 border-b-2 flex items-center gap-1.5 transition ${
+              activeTab === 'env'
+                ? 'border-emerald-600 text-emerald-800'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Key className="w-4 h-4" />
+            <span>Variabel .env & Vercel</span>
           </button>
         </div>
 
@@ -395,6 +439,109 @@ export const DatabaseStatusModal: React.FC<Props> = ({
                   <li>Buka menu <strong>Firestore Database</strong> &gt; pilih tab <strong>Rules</strong> di bagian atas.</li>
                   <li>Klik tombol <strong>Salin Kode Rules</strong> di atas, tempel (*paste*) ke editor Rules, lalu klik <strong>Publish</strong>.</li>
                 </ol>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'env' && (
+            <div className="space-y-4">
+              <div className="bg-slate-900 text-slate-100 p-4 rounded-xl border border-slate-800 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h5 className="font-bold text-sm text-white flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-emerald-400" />
+                      Konfigurasi Environment Variables (.env)
+                    </h5>
+                    <p className="text-xs text-slate-300 mt-1">
+                      Nilai konfigurasi ini digunakan oleh Vite (melalui <code className="text-emerald-300 font-mono">import.meta.env.VITE_*</code>) dan di Vercel untuk menghubungkan aplikasi ke Firebase.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCopyEnv}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition shadow-xs shrink-0"
+                  >
+                    {copiedEnv ? <Check className="w-3.5 h-3.5 text-white" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedEnv ? 'Tersalin Semua!' : 'Salin Seluruh .env'}</span>
+                  </button>
+                </div>
+
+                <div className="relative rounded-lg overflow-hidden bg-slate-950 p-3 font-mono text-[11px] text-emerald-300 border border-slate-800">
+                  <pre className="overflow-x-auto whitespace-pre">{ENV_CONFIG_TEXT}</pre>
+                </div>
+              </div>
+
+              {/* Table of single variables with individual copy buttons */}
+              <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+                <div className="p-3 bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-700 flex items-center justify-between">
+                  <span>Daftar Variabel (Salin per Baris)</span>
+                  <span className="text-[11px] font-normal text-slate-500">Prefix wajib: <code className="font-mono text-emerald-700 font-bold">VITE_</code></span>
+                </div>
+                <div className="divide-y divide-slate-100 text-xs">
+                  {[
+                    { key: 'VITE_FIREBASE_API_KEY', val: 'AIzaSyCBuEIu1ITK40brP7SCWKQOQBdaMDFQx6M', label: 'Firebase Web API Key' },
+                    { key: 'VITE_FIREBASE_AUTH_DOMAIN', val: 'daily-ctivity-itbg.firebaseapp.com', label: 'Auth Domain' },
+                    { key: 'VITE_FIREBASE_PROJECT_ID', val: 'daily-ctivity-itbg', label: 'Firestore Project ID' },
+                    { key: 'VITE_FIREBASE_STORAGE_BUCKET', val: 'daily-ctivity-itbg.firebasestorage.app', label: 'Storage Bucket' },
+                    { key: 'VITE_FIREBASE_MESSAGING_SENDER_ID', val: '927845263252', label: 'Sender ID' },
+                    { key: 'VITE_FIREBASE_APP_ID', val: '1:927845263252:web:92522c80b69caf611a1181', label: 'Web App ID' }
+                  ].map((item) => (
+                    <div key={item.key} className="p-2.5 flex items-center justify-between gap-2 hover:bg-slate-50 transition">
+                      <div className="min-w-0 flex-1">
+                        <span className="font-mono font-bold text-slate-900 block truncate">{item.key}</span>
+                        <span className="text-[11px] text-slate-500 truncate block font-mono">{item.val}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleCopySingle(item.key, item.val)}
+                        className="px-2.5 py-1 text-[11px] font-bold rounded border border-slate-200 hover:bg-white text-slate-700 hover:text-emerald-700 transition shrink-0 flex items-center gap-1"
+                      >
+                        {copiedKey === item.key ? (
+                          <>
+                            <Check className="w-3 h-3 text-emerald-600" />
+                            <span className="text-emerald-600">Tersalin</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3 h-3 text-slate-400" />
+                            <span>Salin</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Step-by-step Instructions */}
+              <div className="space-y-3">
+                <div className="p-4 bg-emerald-50/80 border border-emerald-200 rounded-xl space-y-2 text-xs text-emerald-950">
+                  <h6 className="font-bold text-emerald-900 flex items-center gap-1.5">
+                    <ExternalLink className="w-4 h-4 text-emerald-700" />
+                    Cara Mengisi di Vercel (Production / Deployment):
+                  </h6>
+                  <ol className="list-decimal list-inside space-y-1.5 text-[11.5px] text-emerald-900 leading-relaxed">
+                    <li>Buka dashboard Vercel di <a href="https://vercel.com" target="_blank" rel="noreferrer" className="underline font-bold">vercel.com</a> dan masuk ke proyek Anda.</li>
+                    <li>Buka tab <strong>Settings</strong> di menu atas &gt; klik menu <strong>Environment Variables</strong> di sidebar sebelah kiri.</li>
+                    <li>Klik tombol <strong>Salin Seluruh .env</strong> di atas, lalu pada kolom <strong>Key</strong> di Vercel cukup tempelkan (*paste*). Vercel akan otomatis mengenali seluruh pasangan nama dan nilainya!</li>
+                    <li>Pastikan semua checklist lingkungan aktif (<strong>Production</strong>, <strong>Preview</strong>, dan <strong>Development</strong>).</li>
+                    <li>Klik <strong>Save</strong>.</li>
+                    <li>Terakhir, buka tab <strong>Deployments</strong> &gt; klik menu tiga titik (...) pada deployment terbaru &gt; pilih <strong>Redeploy</strong> agar variabel baru aktif.</li>
+                  </ol>
+                </div>
+
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs text-slate-800">
+                  <h6 className="font-bold text-slate-900 flex items-center gap-1.5">
+                    <FileText className="w-4 h-4 text-slate-700" />
+                    Cara Mengisi di Komputer / Project Lokal (VS Code / Git):
+                  </h6>
+                  <ol className="list-decimal list-inside space-y-1.5 text-[11.5px] text-slate-700 leading-relaxed">
+                    <li>Buat file baru bernama persis <code className="font-mono font-bold bg-white px-1.5 py-0.5 rounded border border-slate-300">.env</code> di folder paling luar (root project, sejajar dengan package.json).</li>
+                    <li>Tempelkan (*paste*) baris variabel di atas ke dalam file <code className="font-mono">.env</code> tersebut.</li>
+                    <li>Simpan file (<kbd className="font-mono px-1 py-0.5 bg-slate-200 rounded text-[10px]">Ctrl + S</kbd>).</li>
+                    <li>Jalankan aplikasi dengan <code className="font-mono bg-white px-1.5 py-0.5 rounded border border-slate-300">npm run dev</code>. Vite akan otomatis memuat variabel tanpa restart tambahan.</li>
+                  </ol>
+                </div>
               </div>
             </div>
           )}

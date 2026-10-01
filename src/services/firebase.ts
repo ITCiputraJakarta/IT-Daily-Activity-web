@@ -241,7 +241,7 @@ export function saveActivityReportLocalImmediate(report: DailyActivityReport): v
     ...report,
     propertyName: report.propertyName || 'Hotel Ciputra Jakarta',
     isUserModified: isModified,
-    updatedAt: isModified ? (report.updatedAt || now) : 0,
+    updatedAt: isModified ? Math.max(report.updatedAt || 0, now) : 0,
     createdAt: report.createdAt || now,
     expiresAt: report.expiresAt || (now + TWO_MONTHS_MS),
   };
@@ -302,7 +302,7 @@ export function saveChecklistReportLocalImmediate(report: DailyChecklistReport):
     propertyName: report.propertyName || 'Hotel Ciputra Jakarta',
     items: Array.isArray(report.items) ? report.items : [],
     isUserModified: isModified,
-    updatedAt: isModified ? (report.updatedAt || now) : 0,
+    updatedAt: isModified ? Math.max(report.updatedAt || 0, now) : 0,
     createdAt: report.createdAt || now,
     expiresAt: report.expiresAt || (now + TWO_MONTHS_MS),
   };
@@ -325,7 +325,7 @@ export async function saveActivityReport(report: DailyActivityReport): Promise<{
     ...report,
     propertyName: report.propertyName || 'Hotel Ciputra Jakarta',
     isUserModified: isModified,
-    updatedAt: isModified ? (report.updatedAt || now) : 0,
+    updatedAt: isModified ? Math.max(report.updatedAt || 0, now) : 0,
     createdAt: report.createdAt || now,
     expiresAt: report.expiresAt || (now + TWO_MONTHS_MS),
   });
@@ -396,53 +396,14 @@ export async function loadActivityReport(dateStr: string): Promise<DailyActivity
     const localPhotos = countActivityPhotos(localReport);
 
     if ((localReport.updatedAt || 0) >= (cloudReport.updatedAt || 0)) {
-      let merged = localReport;
-      if (cloudPhotos > localPhotos) {
-        merged = {
-          ...localReport,
-          saraActivity: {
-            ...localReport.saraActivity,
-            screenshotUrl: localReport.saraActivity?.screenshotUrl || cloudReport.saraActivity?.screenshotUrl || '',
-          },
-          internetTraffic: {
-            ...localReport.internetTraffic,
-            screenshotUrl: localReport.internetTraffic?.screenshotUrl || cloudReport.internetTraffic?.screenshotUrl || '',
-          },
-          serverTemperature: {
-            ...localReport.serverTemperature,
-            photoUrl: localReport.serverTemperature?.photoUrl || cloudReport.serverTemperature?.photoUrl || '',
-          },
-        };
-      }
-      safeSetLocalStorage(LS_PREFIX_ACTIVITY + dateStr, JSON.stringify(merged));
+      safeSetLocalStorage(LS_PREFIX_ACTIVITY + dateStr, JSON.stringify(localReport));
       if (db && localHasData) {
-        setDoc(doc(db, COLLECTION_ACTIVITIES, dateStr), sanitizeForFirestore(merged)).catch(() => {});
+        setDoc(doc(db, COLLECTION_ACTIVITIES, dateStr), sanitizeForFirestore(localReport)).catch(() => {});
       }
-      return merged;
+      return localReport;
     } else {
-      let merged = cloudReport;
-      if (localPhotos > cloudPhotos) {
-        merged = {
-          ...cloudReport,
-          saraActivity: {
-            ...cloudReport.saraActivity,
-            screenshotUrl: cloudReport.saraActivity?.screenshotUrl || localReport.saraActivity?.screenshotUrl || '',
-          },
-          internetTraffic: {
-            ...cloudReport.internetTraffic,
-            screenshotUrl: cloudReport.internetTraffic?.screenshotUrl || localReport.internetTraffic?.screenshotUrl || '',
-          },
-          serverTemperature: {
-            ...cloudReport.serverTemperature,
-            photoUrl: cloudReport.serverTemperature?.photoUrl || localReport.serverTemperature?.photoUrl || '',
-          },
-        };
-        if (db) {
-          setDoc(doc(db, COLLECTION_ACTIVITIES, dateStr), sanitizeForFirestore(merged)).catch(() => {});
-        }
-      }
-      safeSetLocalStorage(LS_PREFIX_ACTIVITY + dateStr, JSON.stringify(merged));
-      return merged;
+      safeSetLocalStorage(LS_PREFIX_ACTIVITY + dateStr, JSON.stringify(cloudReport));
+      return cloudReport;
     }
   }
 
@@ -475,7 +436,7 @@ export async function saveChecklistReport(report: DailyChecklistReport): Promise
     propertyName: report.propertyName || 'Hotel Ciputra Jakarta',
     items: Array.isArray(report.items) ? report.items : [],
     isUserModified: isModified,
-    updatedAt: isModified ? (report.updatedAt || now) : 0,
+    updatedAt: isModified ? Math.max(report.updatedAt || 0, now) : 0,
     createdAt: report.createdAt || now,
     expiresAt: report.expiresAt || (now + TWO_MONTHS_MS),
   });
@@ -555,22 +516,14 @@ export async function loadChecklistReport(dateStr: string): Promise<DailyCheckli
     }
 
     if ((localReport.updatedAt || 0) >= (cloudReport.updatedAt || 0)) {
-      const merged: DailyChecklistReport = {
-        ...localReport,
-        waReportPhoto: localReport.waReportPhoto || cloudReport.waReportPhoto || '',
-      };
-      safeSetLocalStorage(LS_PREFIX_CHECKLIST + dateStr, JSON.stringify(merged));
+      safeSetLocalStorage(LS_PREFIX_CHECKLIST + dateStr, JSON.stringify(localReport));
       if (db && localModified) {
-        setDoc(doc(db, COLLECTION_CHECKLISTS, dateStr), sanitizeForFirestore(merged)).catch(() => {});
+        setDoc(doc(db, COLLECTION_CHECKLISTS, dateStr), sanitizeForFirestore(localReport)).catch(() => {});
       }
-      return merged;
+      return localReport;
     } else {
-      const merged: DailyChecklistReport = {
-        ...cloudReport,
-        waReportPhoto: cloudReport.waReportPhoto || localReport.waReportPhoto || '',
-      };
-      safeSetLocalStorage(LS_PREFIX_CHECKLIST + dateStr, JSON.stringify(merged));
-      return merged;
+      safeSetLocalStorage(LS_PREFIX_CHECKLIST + dateStr, JSON.stringify(cloudReport));
+      return cloudReport;
     }
   }
 

@@ -25,7 +25,8 @@ import {
   RefreshCw,
   Search,
   ArrowUpDown,
-  Filter
+  Filter,
+  AlertTriangle
 } from 'lucide-react';
 
 interface Props {
@@ -282,11 +283,31 @@ export const DailyActivityForm: React.FC<Props> = ({
 
   // Confirmation modal state for deletions (Yes / No)
   const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<{
-    type: 'activity' | 'activity_photo' | 'traffic_photo' | 'temp_photo' | 'reset_worksheet';
+    type: 'activity' | 'activity_photo' | 'traffic_photo' | 'temp_photo' | 'sara_photo' | 'reset_worksheet';
     index?: number;
     title: string;
     description: string;
   } | null>(null);
+
+  // Warning Confirmation modal state for changing/replacing existing photos
+  const [changePhotoConfirmTarget, setChangePhotoConfirmTarget] = useState<{
+    title: string;
+    description: string;
+    actionLabel: string;
+    sourceType: 'camera' | 'gallery';
+    onConfirm: () => void;
+  } | null>(null);
+
+  const handleConfirmChangePhoto = () => {
+    if (changePhotoConfirmTarget) {
+      const runConfirm = changePhotoConfirmTarget.onConfirm;
+      setChangePhotoConfirmTarget(null);
+      // Execute file picker after state cleanup to ensure clean browser event trigger
+      setTimeout(() => {
+        runConfirm();
+      }, 50);
+    }
+  };
 
   const [localNotification, setLocalNotification] = useState<string | null>(null);
   const showLocalNotice = (msg: string) => {
@@ -312,6 +333,9 @@ export const DailyActivityForm: React.FC<Props> = ({
     } else if (deleteConfirmTarget.type === 'temp_photo') {
       handleServerTempPhotoChange('');
       showLocalNotice('✓ Foto termometer server berhasil dihapus.');
+    } else if (deleteConfirmTarget.type === 'sara_photo') {
+      handleSaraImageChange('');
+      showLocalNotice('✓ Screenshot dashboard SARA berhasil dihapus.');
     } else if (deleteConfirmTarget.type === 'reset_worksheet') {
       const blank = createDefaultActivityReport(report.date);
       onChange(blank);
@@ -932,16 +956,32 @@ export const DailyActivityForm: React.FC<Props> = ({
                       <div className="flex items-center gap-2 flex-wrap">
                         <button
                           type="button"
-                          onClick={() => cameraInputRefs.current[`act-${index}`]?.click()}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold transition shadow-2xs"
+                          onClick={() => {
+                            setChangePhotoConfirmTarget({
+                              title: `Ganti Foto Aktivitas #${act.no}?`,
+                              description: `Foto dokumentasi untuk aktivitas #${act.no} sudah terlampir. Mengambil foto baru via kamera akan menimpa foto lama. Apakah Anda yakin ingin melanjutkan membuka kamera?`,
+                              actionLabel: 'Ya, Buka Kamera',
+                              sourceType: 'camera',
+                              onConfirm: () => cameraInputRefs.current[`act-${index}`]?.click(),
+                            });
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold transition shadow-2xs cursor-pointer"
                         >
                           <Camera className="w-3.5 h-3.5 text-amber-300" />
                           Foto Ulang (Kamera)
                         </button>
                         <button
                           type="button"
-                          onClick={() => galleryInputRefs.current[`act-${index}`]?.click()}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-lg text-xs font-semibold transition"
+                          onClick={() => {
+                            setChangePhotoConfirmTarget({
+                              title: `Ganti Foto Aktivitas #${act.no}?`,
+                              description: `Foto dokumentasi untuk aktivitas #${act.no} sudah terlampir. Memilih foto baru dari galeri akan menimpa foto lama. Apakah Anda yakin ingin melanjutkan membuka galeri?`,
+                              actionLabel: 'Ya, Buka Galeri',
+                              sourceType: 'gallery',
+                              onConfirm: () => galleryInputRefs.current[`act-${index}`]?.click(),
+                            });
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-lg text-xs font-semibold transition cursor-pointer"
                         >
                           <Upload className="w-3.5 h-3.5 text-blue-600" />
                           Ganti dari Galeri
@@ -1067,13 +1107,53 @@ export const DailyActivityForm: React.FC<Props> = ({
                   alt="SARA Screenshot"
                   className="w-full h-36 object-contain"
                 />
-                <button
-                  type="button"
-                  onClick={() => handleSaraImageChange('')}
-                  className="absolute top-2 right-2 px-2 py-0.5 bg-red-600 text-white text-[10px] rounded shadow-xs font-semibold"
-                >
-                  Hapus
-                </button>
+                <div className="flex items-center gap-1.5 absolute top-2 right-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChangePhotoConfirmTarget({
+                        title: 'Ganti Screenshot SARA (Galeri)?',
+                        description: 'Screenshot dashboard SARA sudah tersimpan. Memilih file baru dari galeri akan menggantikan screenshot saat ini. Apakah Anda yakin ingin melanjutkan?',
+                        actionLabel: 'Ya, Buka Galeri',
+                        sourceType: 'gallery',
+                        onConfirm: () => galleryInputRefs.current['sara']?.click(),
+                      });
+                    }}
+                    className="px-2 py-0.5 bg-slate-800 hover:bg-slate-900 text-white text-[10px] rounded shadow-xs font-semibold flex items-center gap-1 cursor-pointer"
+                  >
+                    <Upload className="w-3 h-3 text-blue-300" />
+                    Ganti Galeri
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChangePhotoConfirmTarget({
+                        title: 'Foto Ulang Screenshot SARA (Kamera)?',
+                        description: 'Screenshot dashboard SARA sudah tersimpan. Mengambil foto baru via kamera akan menggantikan screenshot saat ini. Apakah Anda yakin ingin melanjutkan?',
+                        actionLabel: 'Ya, Buka Kamera',
+                        sourceType: 'camera',
+                        onConfirm: () => cameraInputRefs.current['sara']?.click(),
+                      });
+                    }}
+                    className="px-2 py-0.5 bg-slate-800 hover:bg-slate-900 text-white text-[10px] rounded shadow-xs font-semibold flex items-center gap-1 cursor-pointer"
+                  >
+                    <Camera className="w-3 h-3 text-amber-300" />
+                    Kamera
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeleteConfirmTarget({
+                        type: 'sara_photo',
+                        title: 'Hapus Screenshot Dashboard SARA?',
+                        description: 'Apakah Anda yakin ingin menghapus gambar screenshot tiket dashboard SARA hari ini?',
+                      });
+                    }}
+                    className="px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white text-[10px] rounded shadow-xs font-semibold cursor-pointer"
+                  >
+                    Hapus
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1175,19 +1255,53 @@ export const DailyActivityForm: React.FC<Props> = ({
                   alt="Traffic Graph"
                   className="w-full h-44 object-contain"
                 />
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDeleteConfirmTarget({
-                      type: 'traffic_photo',
-                      title: 'Hapus Grafik MRTG?',
-                      description: 'Apakah Anda yakin ingin menghapus gambar grafik analisis trafik MRTG?',
-                    });
-                  }}
-                  className="absolute top-2 right-2 px-2 py-0.5 bg-red-600 text-white text-[10px] rounded shadow-xs font-semibold cursor-pointer"
-                >
-                  Hapus
-                </button>
+                <div className="flex items-center gap-1.5 absolute top-2 right-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChangePhotoConfirmTarget({
+                        title: 'Ganti Grafik Trafik MRTG (Galeri)?',
+                        description: 'Grafik analisis trafik MRTG sudah terpasang. Memilih file baru dari galeri akan menggantikan grafik saat ini. Apakah Anda yakin ingin melanjutkan?',
+                        actionLabel: 'Ya, Buka Galeri',
+                        sourceType: 'gallery',
+                        onConfirm: () => galleryInputRefs.current['traffic']?.click(),
+                      });
+                    }}
+                    className="px-2 py-0.5 bg-slate-800 hover:bg-slate-900 text-white text-[10px] rounded shadow-xs font-semibold flex items-center gap-1 cursor-pointer"
+                  >
+                    <Upload className="w-3 h-3 text-blue-300" />
+                    Ganti Galeri
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChangePhotoConfirmTarget({
+                        title: 'Foto Ulang Grafik MRTG (Kamera)?',
+                        description: 'Grafik analisis trafik MRTG sudah terpasang. Mengambil foto baru via kamera akan menggantikan grafik saat ini. Apakah Anda yakin ingin melanjutkan?',
+                        actionLabel: 'Ya, Buka Kamera',
+                        sourceType: 'camera',
+                        onConfirm: () => cameraInputRefs.current['traffic']?.click(),
+                      });
+                    }}
+                    className="px-2 py-0.5 bg-slate-800 hover:bg-slate-900 text-white text-[10px] rounded shadow-xs font-semibold flex items-center gap-1 cursor-pointer"
+                  >
+                    <Camera className="w-3 h-3 text-amber-300" />
+                    Kamera
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeleteConfirmTarget({
+                        type: 'traffic_photo',
+                        title: 'Hapus Grafik MRTG?',
+                        description: 'Apakah Anda yakin ingin menghapus gambar grafik analisis trafik MRTG?',
+                      });
+                    }}
+                    className="px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white text-[10px] rounded shadow-xs font-semibold cursor-pointer"
+                  >
+                    Hapus
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1351,11 +1465,35 @@ export const DailyActivityForm: React.FC<Props> = ({
                 <div className="flex items-center gap-1.5 absolute top-2 right-2">
                   <button
                     type="button"
-                    onClick={() => cameraInputRefs.current['temp']?.click()}
-                    className="px-2 py-0.5 bg-slate-800 text-white text-[10px] rounded shadow-xs font-semibold flex items-center gap-1"
+                    onClick={() => {
+                      setChangePhotoConfirmTarget({
+                        title: 'Ganti Foto Termometer Server (Galeri)?',
+                        description: 'Foto termometer server sudah terpasang. Memilih file baru dari galeri akan menggantikan foto saat ini. Apakah Anda yakin ingin melanjutkan?',
+                        actionLabel: 'Ya, Buka Galeri',
+                        sourceType: 'gallery',
+                        onConfirm: () => galleryInputRefs.current['temp']?.click(),
+                      });
+                    }}
+                    className="px-2 py-0.5 bg-slate-800 hover:bg-slate-900 text-white text-[10px] rounded shadow-xs font-semibold flex items-center gap-1 cursor-pointer"
+                  >
+                    <Upload className="w-3 h-3 text-blue-300" />
+                    Ganti Galeri
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChangePhotoConfirmTarget({
+                        title: 'Foto Ulang Termometer Server (Kamera)?',
+                        description: 'Foto termometer server sudah terpasang. Mengambil foto baru via kamera akan menggantikan foto saat ini. Apakah Anda yakin ingin melanjutkan?',
+                        actionLabel: 'Ya, Buka Kamera',
+                        sourceType: 'camera',
+                        onConfirm: () => cameraInputRefs.current['temp']?.click(),
+                      });
+                    }}
+                    className="px-2 py-0.5 bg-slate-800 hover:bg-slate-900 text-white text-[10px] rounded shadow-xs font-semibold flex items-center gap-1 cursor-pointer"
                   >
                     <Camera className="w-3 h-3 text-amber-300" />
-                    Foto Ulang
+                    Kamera
                   </button>
                   <button
                     type="button"
@@ -1366,7 +1504,7 @@ export const DailyActivityForm: React.FC<Props> = ({
                         description: 'Apakah Anda yakin ingin menghapus foto indikator ThermoPro / Termometer Server?',
                       });
                     }}
-                    className="px-2 py-0.5 bg-red-600 text-white text-[10px] rounded shadow-xs font-semibold cursor-pointer"
+                    className="px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white text-[10px] rounded shadow-xs font-semibold cursor-pointer"
                   >
                     Hapus
                   </button>
@@ -1573,6 +1711,44 @@ export const DailyActivityForm: React.FC<Props> = ({
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 Ya, Hapus
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Change Photo Warning Confirmation Modal (Yes / No) */}
+      {changePhotoConfirmTarget && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-12 h-12 rounded-full bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center mx-auto mb-3">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-bold text-slate-900 text-center mb-1">
+              {changePhotoConfirmTarget.title}
+            </h3>
+            <p className="text-xs text-slate-600 text-center mb-5 leading-relaxed">
+              {changePhotoConfirmTarget.description}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setChangePhotoConfirmTarget(null)}
+                className="flex-1 py-2.5 px-3 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 font-semibold text-xs transition text-center cursor-pointer"
+              >
+                Batal (Pertahankan)
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmChangePhoto}
+                className="flex-1 py-2.5 px-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs transition shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                {changePhotoConfirmTarget.sourceType === 'camera' ? (
+                  <Camera className="w-3.5 h-3.5" />
+                ) : (
+                  <Upload className="w-3.5 h-3.5" />
+                )}
+                {changePhotoConfirmTarget.actionLabel}
               </button>
             </div>
           </div>
