@@ -11,7 +11,9 @@ import {
   Pencil,
   Search,
   ArrowUpDown,
-  Building2
+  Building2,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 
 interface Props {
@@ -97,6 +99,27 @@ export const TeamManagementModal: React.FC<Props> = ({
     onUpdateTeamMembers(updated);
   };
 
+  const handleMoveMember = (id: string, direction: 'up' | 'down') => {
+    if (sortBy !== 'default') {
+      setSortBy('default');
+    }
+    const currentIndex = teamMembers.findIndex((m) => m.id === id);
+    if (currentIndex === -1) return;
+    if (
+      (direction === 'up' && currentIndex === 0) ||
+      (direction === 'down' && currentIndex === teamMembers.length - 1)
+    ) {
+      return;
+    }
+    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    const items = [...teamMembers];
+    const temp = items[currentIndex];
+    items[currentIndex] = items[targetIndex];
+    items[targetIndex] = temp;
+    onUpdateTeamMembers(items);
+    showFeedback(`✓ Urutan PIC "${temp.name}" berhasil dipindahkan ke ${direction === 'up' ? 'atas' : 'bawah'}. Pilihan PIC di Daily Activity otomatis mengikuti urutan ini.`);
+  };
+
   const handleAddMember = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName.trim()) return;
@@ -168,21 +191,21 @@ export const TeamManagementModal: React.FC<Props> = ({
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-200">
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 bg-slate-900 text-white">
+        {/* Header (Clean White / Light Theme) */}
+        <div className="flex items-center justify-between p-4 bg-white border-b border-slate-200 text-slate-900">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-emerald-900/80 text-emerald-300">
+            <div className="p-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200">
               <Users className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-bold text-base">Kelola Daftar Petugas IT (PIC)</h3>
-                <span className="text-[10px] bg-emerald-800 text-emerald-200 px-2 py-0.5 rounded-full font-bold border border-emerald-700">
+                <h3 className="font-bold text-base text-slate-900">Kelola Daftar Petugas IT (PIC)</h3>
+                <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold border border-emerald-300">
                   Khusus Tim IT
                 </span>
               </div>
-              <p className="text-[11px] text-slate-300">
-                Kelola nama teknisi/petugas IT (PIC) untuk Activity & Shift Checklist
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Kelola nama teknisi/petugas IT (PIC) untuk Activity &amp; Shift Checklist
               </p>
             </div>
           </div>
@@ -194,7 +217,7 @@ export const TeamManagementModal: React.FC<Props> = ({
                   onClose();
                   onSwitchToUserModal();
                 }}
-                className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-blue-300 text-[11px] font-semibold flex items-center gap-1 border border-slate-700 transition"
+                className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-blue-700 text-[11px] font-bold flex items-center gap-1 border border-slate-300 transition cursor-pointer"
                 title="Buka Kelola User / Client Hotel"
               >
                 <Building2 className="w-3.5 h-3.5" />
@@ -203,7 +226,8 @@ export const TeamManagementModal: React.FC<Props> = ({
             )}
             <button
               onClick={onClose}
-              className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+              className="p-1 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer"
+              title="Tutup Modal"
             >
               <X className="w-5 h-5" />
             </button>
@@ -384,6 +408,9 @@ export const TeamManagementModal: React.FC<Props> = ({
                   /* Standard Member Row with Edit, Status, and Delete */
                   <div className="flex items-center justify-between p-2.5">
                     <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="w-6 h-6 rounded-md bg-slate-100 text-slate-700 font-black text-[11px] flex items-center justify-center shrink-0 border border-slate-200">
+                        {teamMembers.findIndex((m) => m.id === member.id) + 1}
+                      </span>
                       <div
                         className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
                           member.isActive
@@ -426,6 +453,28 @@ export const TeamManagementModal: React.FC<Props> = ({
                         </div>
                       ) : (
                         <>
+                          {/* Reorder Up / Down (Sortir Atas Bawah) */}
+                          <div className="flex items-center gap-0.5 mr-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                            <button
+                              type="button"
+                              onClick={() => handleMoveMember(member.id, 'up')}
+                              disabled={teamMembers.findIndex((m) => m.id === member.id) === 0}
+                              title="Pindahkan ke atas (urutan pilihan PIC di Daily Activity otomatis mengikuti ini)"
+                              className="p-1 rounded text-slate-600 hover:text-slate-900 hover:bg-white disabled:opacity-25 transition cursor-pointer"
+                            >
+                              <ArrowUp className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleMoveMember(member.id, 'down')}
+                              disabled={teamMembers.findIndex((m) => m.id === member.id) === teamMembers.length - 1}
+                              title="Pindahkan ke bawah (urutan pilihan PIC di Daily Activity otomatis mengikuti ini)"
+                              className="p-1 rounded text-slate-600 hover:text-slate-900 hover:bg-white disabled:opacity-25 transition cursor-pointer"
+                            >
+                              <ArrowDown className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+
                           {/* Edit Button */}
                           <button
                             type="button"
@@ -491,7 +540,7 @@ export const TeamManagementModal: React.FC<Props> = ({
           </span>
           <button
             onClick={onClose}
-            className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-semibold text-xs"
+            className="px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg font-bold text-xs cursor-pointer shadow-xs transition"
           >
             Selesai
           </button>

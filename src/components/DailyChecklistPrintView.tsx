@@ -28,8 +28,8 @@ export const DailyChecklistPrintView: React.FC<Props> = ({
         <div>
           {/* Modern Executive Header */}
           <div className="flex items-center justify-between pb-2 mb-2 border-b-2 border-slate-800">
-            <div className="w-36 flex items-center">
-              <CiputraLogo size="sm" customLogoUrl={customLogoUrl} className="items-start" />
+            <div className="w-36 h-13 flex items-center">
+              <CiputraLogo size="fit" customLogoUrl={customLogoUrl} className="items-start justify-start w-full h-full" />
             </div>
             <div className="flex-1 text-center pr-28">
               <h1 className="text-base font-extrabold tracking-tight text-slate-950 uppercase font-sans">

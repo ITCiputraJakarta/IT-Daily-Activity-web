@@ -77,13 +77,11 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
     if (changePhotoConfirmTarget) {
       const isCam = changePhotoConfirmTarget.sourceType === 'camera';
       setChangePhotoConfirmTarget(null);
-      setTimeout(() => {
-        if (isCam) {
-          cameraInputRef.current?.click();
-        } else {
-          galleryInputRef.current?.click();
-        }
-      }, 50);
+      if (isCam) {
+        cameraInputRef.current?.click();
+      } else {
+        galleryInputRef.current?.click();
+      }
     }
   };
 
@@ -498,8 +496,8 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
           {/* TOP HEADER */}
           <div className="border-b-2 border-slate-800 pb-2.5 mb-3 flex items-center justify-between gap-3">
             {/* Logo */}
-            <div className="w-36 flex items-center shrink-0">
-              <CiputraLogo size="md" customLogoUrl={customLogoUrl} />
+            <div className="w-36 h-13 flex items-center shrink-0">
+              <CiputraLogo size="fit" customLogoUrl={customLogoUrl} className="items-start justify-start w-full h-full" />
             </div>
 
             {/* Title & Metadata */}

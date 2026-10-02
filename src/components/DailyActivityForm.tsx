@@ -27,7 +27,8 @@ import {
   ArrowUpDown,
   Filter,
   AlertTriangle,
-  Zap
+  Zap,
+  Smartphone
 } from 'lucide-react';
 
 interface Props {
@@ -37,6 +38,8 @@ interface Props {
   isSaving: boolean;
   teamMembers: TeamMember[];
   onOpenTeamModal: () => void;
+  departments?: string[];
+  onOpenDepartmentModal?: () => void;
   clientUsers: ClientUser[];
   onOpenUserModal: () => void;
   onSyncTrafficToChecklist?: (maxIn: string, avgIn: string, currentIn: string) => void;
@@ -54,6 +57,8 @@ export const DailyActivityForm: React.FC<Props> = ({
   isSaving,
   teamMembers,
   onOpenTeamModal,
+  departments,
+  onOpenDepartmentModal,
   clientUsers,
   onOpenUserModal,
   onSyncTrafficToChecklist,
@@ -74,13 +79,32 @@ export const DailyActivityForm: React.FC<Props> = ({
   const [filterPic, setFilterPic] = useState<string>('ALL');
   const [filterDept, setFilterDept] = useState<string>('ALL');
   
-  // Default to 'no-desc' (Aktivitas Terakhir di Atas) on mobile screens (< 768px) so users don't have to scroll
+  // Priority: User's saved preference -> mobile check (< 768px defaults to 'no-desc') -> 'no-desc' default
   const [sortBy, setSortBy] = useState<ActivitySortOption>(() => {
-    if (typeof window !== 'undefined' && window.innerWidth < 768) {
-      return 'no-desc';
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('daily_activity_sort_pref');
+        if (saved && (saved === 'no-desc' || saved === 'no-asc')) {
+          return saved as ActivitySortOption;
+        }
+      } catch {
+        // ignore
+      }
+      if (window.innerWidth < 768) {
+        return 'no-desc';
+      }
     }
-    return 'no-asc';
+    return 'no-desc'; // Default to latest item on top so technicians never struggle with mobile scrolling!
   });
+
+  const handleSetSortBy = (val: ActivitySortOption) => {
+    setSortBy(val);
+    try {
+      localStorage.setItem('daily_activity_sort_pref', val);
+    } catch {
+      // ignore
+    }
+  };
 
   const [highlightedIndex, setHighlightedIndex] = useState<number | null>(null);
 
@@ -126,12 +150,14 @@ export const DailyActivityForm: React.FC<Props> = ({
   );
 
   const allDepartments = useMemo(() => {
-    const set = new Set<string>(CLIENT_DEPARTMENTS);
+    const list = departments && departments.length > 0 ? [...departments] : [...CLIENT_DEPARTMENTS];
     clientUsers.forEach((u) => {
-      if (u.department) set.add(u.department);
+      if (u.department && !list.includes(u.department)) {
+        list.push(u.department);
+      }
     });
-    return Array.from(set);
-  }, [clientUsers]);
+    return list;
+  }, [departments, clientUsers]);
 
   const updateField = <K extends keyof DailyActivityReport>(
     key: K,
@@ -346,10 +372,7 @@ export const DailyActivityForm: React.FC<Props> = ({
     if (changePhotoConfirmTarget) {
       const runConfirm = changePhotoConfirmTarget.onConfirm;
       setChangePhotoConfirmTarget(null);
-      // Execute file picker after state cleanup to ensure clean browser event trigger
-      setTimeout(() => {
-        runConfirm();
-      }, 50);
+      runConfirm();
     }
   };
 
@@ -403,7 +426,7 @@ export const DailyActivityForm: React.FC<Props> = ({
   const addLogBookItem = () => {
     const cur = latestReportRef.current;
     const nextNo = cur.logBookActivities.length + 1;
-    const defaultDept = 'FO (Front Office)';
+    const defaultDept = (departments && departments.length > 0) ? departments[0] : 'FO (Front Office)';
     const defaultPic = activeMembers[0]?.name || '';
     const newItem: LogBookItem = {
       id: 'act-' + Date.now(),
@@ -416,7 +439,14 @@ export const DailyActivityForm: React.FC<Props> = ({
       pic: defaultPic,
       pictureUrl: '',
     };
-    updateField('logBookActivities', [...cur.logBookActivities, newItem]);
+    const updated = [...cur.logBookActivities, newItem];
+    updateField('logBookActivities', updated);
+
+    // Auto-scroll & focus to the new activity card so mobile users don't have to search or scroll
+    const targetIdx = updated.length - 1;
+    setTimeout(() => {
+      jumpToActivity(targetIdx);
+    }, 120);
   };
 
   const removeLogBookItem = (index: number) => {
@@ -491,7 +521,7 @@ export const DailyActivityForm: React.FC<Props> = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 mb-4 border-b border-slate-100 gap-3">
           <div className="flex items-center gap-3">
             <div className="h-11 w-24 sm:w-28 flex items-center justify-center p-1 bg-slate-50 border border-slate-200 rounded-lg shrink-0">
-              <CiputraLogo size="sm" customLogoUrl={customLogoUrl} />
+              <CiputraLogo size="fit" customLogoUrl={customLogoUrl} />
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -613,10 +643,10 @@ export const DailyActivityForm: React.FC<Props> = ({
       <div className="bg-white rounded-xl shadow-xs border border-slate-200 p-4 md:p-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 mb-4 border-b border-slate-100 gap-3">
           <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-yellow-400"></span>
+            <span className="w-3 h-3 rounded-full bg-emerald-600"></span>
             <div>
               <h2 className="text-base font-bold text-slate-900">
-                1. IT Log Book Activity (Aktivitas Harian & Dokumentasi Kasus)
+                1. IT Log Book Activity (Aktivitas Harian &amp; Dokumentasi Kasus)
               </h2>
               <p className="text-xs text-slate-500">
                 Daftar <strong>User / Client</strong> dan <strong>PIC IT</strong> dipisahkan serta dapat dicari &amp; disortir
@@ -624,34 +654,32 @@ export const DailyActivityForm: React.FC<Props> = ({
             </div>
           </div>
           <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
-            <button
-              type="button"
-              onClick={() => setSortBy((prev) => (prev === 'no-desc' ? 'no-asc' : 'no-desc'))}
-              title="Balik urutan aktivitas: Poin Terakhir di Atas (Sangat cocok untuk layar HP) atau No. 1 di Atas"
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition border cursor-pointer ${
-                sortBy === 'no-desc'
-                  ? 'bg-amber-100 text-amber-950 border-amber-300 hover:bg-amber-200 shadow-2xs'
-                  : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
-              }`}
-            >
-              <ArrowUpDown className="w-3.5 h-3.5 text-amber-700" />
-              <span>{sortBy === 'no-desc' ? '⚡ Terakhir di Atas (HP)' : 'Urut #1 di Atas'}</span>
-            </button>
+            {onOpenDepartmentModal && (
+              <button
+                type="button"
+                onClick={onOpenDepartmentModal}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold transition cursor-pointer"
+                title="Kelola daftar departemen hotel & urutan atas-bawah"
+              >
+                <Layers className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Kelola Dept</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={onOpenUserModal}
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-lg text-xs font-semibold transition cursor-pointer"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold transition cursor-pointer"
             >
-              <Building2 className="w-3.5 h-3.5 text-blue-700" />
-              Kelola User
+              <Building2 className="w-3.5 h-3.5 text-blue-600" />
+              <span>Kelola User</span>
             </button>
             <button
               type="button"
               onClick={onOpenTeamModal}
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-semibold transition cursor-pointer"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold transition cursor-pointer"
             >
-              <Users className="w-3.5 h-3.5 text-emerald-700" />
-              Kelola PIC
+              <Users className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Kelola PIC</span>
             </button>
             <button
               type="button"
@@ -660,7 +688,7 @@ export const DailyActivityForm: React.FC<Props> = ({
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition border border-slate-300 cursor-pointer"
             >
               <RefreshCw className="w-3.5 h-3.5 text-slate-600" />
-              Lembar Baru (3 Blank)
+              <span>Lembar Baru (3 Blank)</span>
             </button>
             <button
               type="button"
@@ -668,7 +696,56 @@ export const DailyActivityForm: React.FC<Props> = ({
               className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              + Tambah Aktivitas
+              <span>+ Tambah Aktivitas</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Mobile Input Priority & Order Switcher (Clean Light Theme) */}
+        <div className="mb-4 p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-2xs">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center shrink-0 text-emerald-700">
+              <Smartphone className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold text-slate-900">Mode Tampilan HP &amp; Urutan Poin:</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 font-extrabold uppercase tracking-wide">
+                  {sortBy === 'no-desc' ? 'Terbaru di Atas (Mode HP)' : 'Urutan #1 di Atas (Standar A4)'}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                {sortBy === 'no-desc'
+                  ? 'Aktivitas paling terakhir berada di paling atas agar saat buka di HP langsung bisa mengisi poin tanpa repot scroll ke bawah.'
+                  : 'Aktivitas berurutan dari nomor 1 ke nomor terakhir sesuai tampilan lembar dokumen A4.'}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 self-start md:self-auto bg-slate-200/80 p-1 rounded-lg border border-slate-300">
+            <button
+              type="button"
+              onClick={() => handleSetSortBy('no-desc')}
+              className={`px-3 py-1.5 rounded-md text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                sortBy === 'no-desc'
+                  ? 'bg-emerald-700 text-white shadow-xs'
+                  : 'text-slate-700 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              <ArrowDown className="w-3.5 h-3.5" />
+              <span>📱 Terakhir di Atas (HP)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSetSortBy('no-asc')}
+              className={`px-3 py-1.5 rounded-md text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                sortBy === 'no-asc'
+                  ? 'bg-emerald-700 text-white shadow-xs'
+                  : 'text-slate-700 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              <ArrowUp className="w-3.5 h-3.5" />
+              <span>📄 Urut #1 (A4)</span>
             </button>
           </div>
         </div>
@@ -689,7 +766,7 @@ export const DailyActivityForm: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={() => setActivitySearch('')}
-                className="absolute right-2 top-2 text-slate-400 hover:text-slate-600 text-xs"
+                className="absolute right-2 top-2 text-slate-400 hover:text-slate-600 text-xs cursor-pointer"
               >
                 ✕
               </button>
@@ -698,11 +775,11 @@ export const DailyActivityForm: React.FC<Props> = ({
 
           {/* Filter by Department / User */}
           <div className="lg:col-span-3 flex items-center gap-1.5">
-            <Filter className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+            <Filter className="w-3.5 h-3.5 text-slate-500 shrink-0" />
             <select
               value={filterDept}
               onChange={(e) => setFilterDept(e.target.value)}
-              className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-300 bg-white font-semibold text-slate-700"
+              className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-300 bg-white font-semibold text-slate-800"
             >
               <option value="ALL">Filter User: Semua Departemen</option>
               {allDepartments.map((dept) => (
@@ -715,11 +792,11 @@ export const DailyActivityForm: React.FC<Props> = ({
 
           {/* Filter by PIC IT */}
           <div className="lg:col-span-2 flex items-center gap-1.5">
-            <Users className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <Users className="w-3.5 h-3.5 text-slate-500 shrink-0" />
             <select
               value={filterPic}
               onChange={(e) => setFilterPic(e.target.value)}
-              className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-300 bg-white font-semibold text-slate-700"
+              className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-300 bg-white font-semibold text-slate-800"
             >
               <option value="ALL">Filter PIC: Semua</option>
               {activeMembers.map((m) => (
@@ -735,8 +812,8 @@ export const DailyActivityForm: React.FC<Props> = ({
             <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 shrink-0" />
             <select
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as ActivitySortOption)}
-              className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-300 bg-white font-semibold text-slate-700"
+              onChange={(e) => handleSetSortBy(e.target.value as ActivitySortOption)}
+              className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-300 bg-white font-semibold text-slate-800"
             >
               <option value="no-desc">Sortir: No. Terakhir di Atas (Terbaru / Mode HP)</option>
               <option value="no-asc">Sortir: No. Urut #1 di Atas (Standar A4)</option>
@@ -749,16 +826,17 @@ export const DailyActivityForm: React.FC<Props> = ({
         </div>
 
         {/* Quick Jump & Mobile Point Navigation Bar */}
-        <div className="mb-4 p-2.5 sm:p-3 bg-linear-to-r from-amber-50/90 via-slate-50 to-emerald-50/70 border border-amber-200 rounded-xl flex flex-wrap items-center justify-between gap-2.5 shadow-2xs">
+        <div className="mb-4 p-2.5 sm:p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-wrap items-center justify-between gap-2.5 shadow-2xs">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-              <Zap className="w-4 h-4 text-amber-600 shrink-0" />
+              <Zap className="w-4 h-4 text-emerald-600 shrink-0" />
               <span>Lompat ke Poin:</span>
             </span>
             <div className="flex items-center gap-1 flex-wrap">
               {report.logBookActivities.map((act, i) => {
                 const isFilled = Boolean(act.details?.trim() || act.clientName?.trim() || act.pictureUrl?.trim());
                 const isNextTarget = i === latestFilledOrNextIndex;
+                const isLastItem = i === report.logBookActivities.length - 1;
                 return (
                   <button
                     key={i}
@@ -767,18 +845,21 @@ export const DailyActivityForm: React.FC<Props> = ({
                     title={`Aktivitas #${i + 1}: ${act.details ? act.details.slice(0, 35) : '(Kosong - siap diisi)'}`}
                     className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
                       isNextTarget
-                        ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-xs ring-2 ring-amber-300'
+                        ? 'bg-emerald-700 hover:bg-emerald-800 text-white shadow-xs ring-2 ring-emerald-500'
                         : isFilled
-                        ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300/80'
-                        : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-300'
+                        ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300'
+                        : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
                     }`}
                   >
                     <span>#{i + 1}</span>
                     {isFilled ? (
-                      <span className="text-[10px] text-emerald-700 font-black">✓</span>
+                      <span className="text-[10px] text-emerald-800 font-black">✓</span>
                     ) : isNextTarget ? (
-                      <span className="text-[10px] text-amber-200 font-black">★</span>
+                      <span className="text-[10px] text-white font-black">★</span>
                     ) : null}
+                    {isLastItem && (
+                      <span className="text-[9px] px-1 rounded bg-slate-800 text-white ml-0.5">Akhir</span>
+                    )}
                   </button>
                 );
               })}
@@ -789,9 +870,9 @@ export const DailyActivityForm: React.FC<Props> = ({
             <button
               type="button"
               onClick={() => jumpToActivity(latestFilledOrNextIndex)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer"
             >
-              <Zap className="w-3.5 h-3.5 text-amber-200" />
+              <Zap className="w-3.5 h-3.5 text-emerald-300" />
               <span>Isi Poin Terakhir (#{latestFilledOrNextIndex + 1})</span>
             </button>
           </div>
@@ -824,19 +905,24 @@ export const DailyActivityForm: React.FC<Props> = ({
               id={`activity-card-${index}`}
               className={`border rounded-xl p-4 transition-all duration-300 shadow-2xs ${
                 index === highlightedIndex
-                  ? 'border-amber-500 bg-amber-50/60 ring-4 ring-amber-300/80 scale-[1.005]'
-                  : 'border-slate-200 bg-slate-50/60 hover:bg-slate-50'
+                  ? 'border-emerald-500 bg-emerald-50/40 ring-4 ring-emerald-500/20 scale-[1.005]'
+                  : 'border-slate-200 bg-white hover:border-slate-300'
               }`}
             >
               {/* Header card with action buttons */}
-              <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-200/80">
+              <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
                 <div className="flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-slate-800 text-white text-xs font-bold flex items-center justify-center">
+                  <span className="w-6 h-6 rounded-full bg-slate-900 text-white text-xs font-bold flex items-center justify-center">
                     {index + 1}
                   </span>
-                  <span className="text-xs font-bold text-slate-800">
+                  <span className="text-xs font-bold text-slate-900">
                     Aktivitas #{index + 1}
                   </span>
+                  {index === report.logBookActivities.length - 1 && (
+                    <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-slate-800 text-white">
+                      Poin Terakhir
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-1">
                   <button
@@ -844,7 +930,7 @@ export const DailyActivityForm: React.FC<Props> = ({
                     onClick={() => moveItem(index, 'up')}
                     disabled={index === 0}
                     title="Geser ke atas"
-                    className="p-1 rounded-md text-slate-500 hover:bg-slate-200 disabled:opacity-30"
+                    className="p-1 rounded-md text-slate-600 hover:bg-slate-100 disabled:opacity-30 cursor-pointer"
                   >
                     <ArrowUp className="w-4 h-4" />
                   </button>
@@ -853,7 +939,7 @@ export const DailyActivityForm: React.FC<Props> = ({
                     onClick={() => moveItem(index, 'down')}
                     disabled={index === report.logBookActivities.length - 1}
                     title="Geser ke bawah"
-                    className="p-1 rounded-md text-slate-500 hover:bg-slate-200 disabled:opacity-30"
+                    className="p-1 rounded-md text-slate-600 hover:bg-slate-100 disabled:opacity-30 cursor-pointer"
                   >
                     <ArrowDown className="w-4 h-4" />
                   </button>
@@ -895,13 +981,13 @@ export const DailyActivityForm: React.FC<Props> = ({
                 {/* Nama User / Client (Separated from PIC IT, with quick picker + search datalist) */}
                 <div className="md:col-span-2">
                   <div className="flex items-center justify-between mb-1">
-                    <label className="text-xs font-bold text-blue-900">
+                    <label className="text-xs font-bold text-slate-800">
                       Nama User / Client
                     </label>
                     <button
                       type="button"
                       onClick={onOpenUserModal}
-                      className="text-[10px] text-blue-700 hover:underline font-bold"
+                      className="text-[10px] text-emerald-600 hover:underline font-bold"
                       title="Kelola Daftar User / Client"
                     >
                       + Kelola User
@@ -921,7 +1007,7 @@ export const DailyActivityForm: React.FC<Props> = ({
                         }
                         handleSelectClientUser(index, e.target.value);
                       }}
-                      className="w-full px-2 py-1 text-[11px] rounded-md border border-blue-200 bg-blue-50/60 text-blue-900 font-semibold focus:ring-1 focus:ring-blue-600"
+                      className="w-full px-2 py-1 text-[11px] rounded-md border border-slate-300 bg-slate-50 text-slate-800 font-semibold focus:ring-1 focus:ring-emerald-600"
                     >
                       <option value="">-- Pilih Cepat User --</option>
                       {activeClientUsers.map((u) => (
@@ -941,20 +1027,31 @@ export const DailyActivityForm: React.FC<Props> = ({
                       value={act.clientName || ''}
                       onChange={(e) => handleClientNameChange(index, e.target.value)}
                       placeholder="Ketik / cari nama user..."
-                      className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-600 bg-white font-medium text-slate-900"
+                      className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-600 bg-white font-medium text-slate-900"
                     />
                   </div>
                 </div>
 
                 {/* Departemen User Dropdown */}
                 <div className="md:col-span-2">
-                  <label className="block text-xs font-bold text-blue-900 mb-1">
-                    Departemen User
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold text-slate-800">
+                      Departemen User
+                    </label>
+                    {onOpenDepartmentModal && (
+                      <button
+                        type="button"
+                        onClick={onOpenDepartmentModal}
+                        className="text-[10px] text-emerald-700 hover:text-emerald-800 font-bold hover:underline cursor-pointer"
+                      >
+                        + Kelola Dept
+                      </button>
+                    )}
+                  </div>
                   <select
                     value={act.clientDepartment || act.userClient || 'FO (Front Office)'}
                     onChange={(e) => handleClientDeptChange(index, e.target.value)}
-                    className="w-full px-2.5 py-2 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-600 bg-white font-semibold text-slate-800"
+                    className="w-full px-2.5 py-2 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-600 bg-white font-semibold text-slate-900"
                   >
                     {allDepartments.map((dept) => (
                       <option key={dept} value={dept}>
@@ -971,7 +1068,7 @@ export const DailyActivityForm: React.FC<Props> = ({
 
                 {/* Status Dropdown */}
                 <div className="md:col-span-2">
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                  <label className="block text-xs font-bold text-slate-800 mb-1">
                     Status
                   </label>
                   <select
@@ -991,13 +1088,13 @@ export const DailyActivityForm: React.FC<Props> = ({
                 {/* PIC Dropdown (IT Person Name only) */}
                 <div className="md:col-span-2">
                   <div className="flex items-center justify-between mb-1">
-                    <label className="text-xs font-bold text-emerald-900">
+                    <label className="text-xs font-bold text-slate-800">
                       PIC IT (Petugas)
                     </label>
                     <button
                       type="button"
                       onClick={onOpenTeamModal}
-                      className="text-[10px] text-emerald-700 hover:underline font-bold"
+                      className="text-[10px] text-emerald-600 hover:underline font-bold"
                       title="Kelola Daftar PIC IT"
                     >
                       + Kelola PIC
@@ -1006,7 +1103,7 @@ export const DailyActivityForm: React.FC<Props> = ({
                   <select
                     value={act.pic}
                     onChange={(e) => updateLogBookItem(index, { pic: e.target.value })}
-                    className="w-full px-2.5 py-2 text-xs rounded-lg border border-emerald-300 focus:ring-2 focus:ring-emerald-600 bg-emerald-50/40 font-bold text-slate-800"
+                    className="w-full px-2.5 py-2 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-600 bg-slate-50 font-bold text-slate-900"
                   >
                     <option value="">-- Pilih PIC IT --</option>
                     {activeMembers.map((m) => (
@@ -1022,10 +1119,10 @@ export const DailyActivityForm: React.FC<Props> = ({
               </div>
 
               {/* Photo Upload Box with Dedicated Camera & Gallery Buttons */}
-              <div className="bg-white p-3 rounded-xl border border-slate-200">
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                    <ImageIcon className="w-3.5 h-3.5 text-emerald-700" />
+                    <ImageIcon className="w-3.5 h-3.5 text-slate-500" />
                     Picture or Documentation (Foto / Bukti Kasus)
                   </span>
                   {act.pictureUrl && (
@@ -1056,11 +1153,11 @@ export const DailyActivityForm: React.FC<Props> = ({
                     <div className="text-xs text-slate-600 space-y-2">
                       <div>
                         <p className="text-emerald-700 font-bold flex items-center gap-1">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                           Foto Dokumentasi Terlampir
                         </p>
                         <p className="text-[11px] text-slate-500">
-                          Siap dicetak di lembar A4 & otomatis tersimpan ke cloud.
+                          Siap dicetak di lembar A4 &amp; otomatis tersimpan ke cloud.
                         </p>
                       </div>
 
@@ -1077,9 +1174,9 @@ export const DailyActivityForm: React.FC<Props> = ({
                               onConfirm: () => cameraInputRefs.current[`act-${index}`]?.click(),
                             });
                           }}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold transition shadow-2xs cursor-pointer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition shadow-2xs cursor-pointer"
                         >
-                          <Camera className="w-3.5 h-3.5 text-amber-300" />
+                          <Camera className="w-3.5 h-3.5 text-white" />
                           Foto Ulang (Kamera)
                         </button>
                         <button
@@ -1093,9 +1190,9 @@ export const DailyActivityForm: React.FC<Props> = ({
                               onConfirm: () => galleryInputRefs.current[`act-${index}`]?.click(),
                             });
                           }}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-lg text-xs font-semibold transition cursor-pointer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold transition cursor-pointer"
                         >
-                          <Upload className="w-3.5 h-3.5 text-blue-600" />
+                          <Upload className="w-3.5 h-3.5 text-slate-600" />
                           Ganti dari Galeri
                         </button>
                       </div>
@@ -1107,16 +1204,16 @@ export const DailyActivityForm: React.FC<Props> = ({
                     <button
                       type="button"
                       onClick={() => cameraInputRefs.current[`act-${index}`]?.click()}
-                      className="flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-dashed border-emerald-400 bg-emerald-50/70 hover:bg-emerald-100 text-emerald-950 transition font-bold text-xs shadow-2xs cursor-pointer"
+                      className="flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-dashed border-emerald-400 bg-emerald-50/50 hover:bg-emerald-50 text-slate-800 transition font-bold text-xs shadow-2xs cursor-pointer"
                     >
-                      <div className="w-7 h-7 rounded-full bg-emerald-700 text-white flex items-center justify-center shrink-0">
+                      <div className="w-7 h-7 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0">
                         <Camera className="w-4 h-4" />
                       </div>
                       <div className="text-left">
-                        <span className="block font-bold text-xs text-emerald-950">
+                        <span className="block font-bold text-xs text-slate-900">
                           Buka Kamera (Foto Langsung)
                         </span>
-                        <span className="block text-[10px] text-emerald-800 font-normal">
+                        <span className="block text-[10px] text-emerald-700 font-medium">
                           Live foto via kamera HP / Tablet
                         </span>
                       </div>
@@ -1126,10 +1223,10 @@ export const DailyActivityForm: React.FC<Props> = ({
                     <button
                       type="button"
                       onClick={() => galleryInputRefs.current[`act-${index}`]?.click()}
-                      className="flex items-center justify-center gap-2 p-3 rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-800 transition font-bold text-xs shadow-2xs cursor-pointer"
+                      className="flex items-center justify-center gap-2 p-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 transition font-bold text-xs shadow-2xs cursor-pointer"
                     >
-                      <div className="w-7 h-7 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center shrink-0">
-                        <Upload className="w-4 h-4 text-blue-600" />
+                      <div className="w-7 h-7 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
+                        <Upload className="w-4 h-4 text-slate-600" />
                       </div>
                       <div className="text-left">
                         <span className="block font-bold text-xs text-slate-900">
@@ -1181,11 +1278,11 @@ export const DailyActivityForm: React.FC<Props> = ({
         </div>
 
         {/* Bottom add activity button */}
-        <div className="mt-4 pt-3 border-t border-slate-100 flex justify-center">
+        <div className="mt-4 pt-3 border-t border-slate-200 flex justify-center">
           <button
             type="button"
             onClick={addLogBookItem}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold transition shadow-xs"
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             + Tambah Aktivitas Lainnya
@@ -1795,6 +1892,28 @@ export const DailyActivityForm: React.FC<Props> = ({
         </div>
       )}
 
+      {/* Mobile-Only Floating Quick Navigation Buttons */}
+      <div className="sm:hidden fixed bottom-5 right-4 z-40 flex flex-col items-end gap-2 pointer-events-none">
+        <button
+          type="button"
+          onClick={() => jumpToActivity(latestFilledOrNextIndex)}
+          className="pointer-events-auto shadow-2xl px-3.5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white border border-slate-700 rounded-full text-xs font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer"
+          title={`Lompat ke Poin #${latestFilledOrNextIndex + 1}`}
+        >
+          <Zap className="w-4 h-4 text-emerald-400 animate-pulse" />
+          <span>Isi Poin #{latestFilledOrNextIndex + 1}</span>
+        </button>
+        <button
+          type="button"
+          onClick={addLogBookItem}
+          className="pointer-events-auto shadow-2xl px-3.5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white border border-emerald-600 rounded-full text-xs font-black flex items-center gap-1.5 transition active:scale-95 cursor-pointer"
+          title="Tambah aktivitas baru"
+        >
+          <Plus className="w-4 h-4" />
+          <span>+ Tambah Poin</span>
+        </button>
+      </div>
+
       {/* Delete Confirmation Modal (Yes / No) */}
       {deleteConfirmTarget && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
@@ -1853,7 +1972,7 @@ export const DailyActivityForm: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={handleConfirmChangePhoto}
-                className="flex-1 py-2.5 px-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs transition shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                className="flex-1 py-2.5 px-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs transition shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 {changePhotoConfirmTarget.sourceType === 'camera' ? (
                   <Camera className="w-3.5 h-3.5" />

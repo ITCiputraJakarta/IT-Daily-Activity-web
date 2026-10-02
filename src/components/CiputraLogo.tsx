@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 
 interface LogoProps {
   className?: string;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'fit' | 'xs' | 'sm' | 'md' | 'lg';
   customLogoUrl?: string | null;
   altText?: string;
 }
@@ -19,21 +19,26 @@ export const CiputraLogo: React.FC<LogoProps> = ({
     setImgError(false);
   }, [customLogoUrl]);
 
-  const sizeClasses = {
-    sm: 'h-10 max-h-10',
-    md: 'h-14 max-h-14',
-    lg: 'h-20 max-h-20',
+  const sizeClasses: Record<string, string> = {
+    fit: 'w-full h-full max-h-full max-w-full',
+    xs: 'h-7 max-h-7 w-auto',
+    sm: 'h-9 max-h-9 w-auto',
+    md: 'h-13 max-h-13 w-auto',
+    lg: 'h-18 max-h-18 w-auto',
   };
+
+  const selectedSizeClass = sizeClasses[size] || sizeClasses.md;
+  const isFit = size === 'fit';
 
   // If user uploaded a custom logo and it loads without error, render it crisply
   if (customLogoUrl && !imgError) {
     return (
-      <div className={`flex select-none ${className || 'items-center justify-center'}`}>
+      <div className={`${isFit ? 'w-full h-full' : ''} flex select-none ${className || 'items-center justify-center'}`}>
         <img
           src={customLogoUrl}
           alt={altText}
           onError={() => setImgError(true)}
-          className={`${sizeClasses[size]} w-auto max-w-[180px] object-contain block`}
+          className={`${selectedSizeClass} object-contain block`}
         />
       </div>
     );
@@ -41,10 +46,11 @@ export const CiputraLogo: React.FC<LogoProps> = ({
 
   // Default: Hotel Ciputra Jakarta official SVG vector insignia
   return (
-    <div className={`flex flex-col select-none ${className || 'items-center'}`}>
+    <div className={`${isFit ? 'w-full h-full' : ''} flex flex-col select-none ${className || 'items-center justify-center'}`}>
       <svg
         viewBox="0 0 160 70"
-        className={`${sizeClasses[size]} w-auto object-contain`}
+        preserveAspectRatio="xMidYMid meet"
+        className={`${selectedSizeClass} object-contain block`}
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
       >

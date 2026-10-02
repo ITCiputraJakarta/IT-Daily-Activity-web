@@ -3,6 +3,8 @@
 @layer base {
   body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background-color: #f8fafc;
+    color: #0f172a;
   }
 }
 
@@ -53,7 +55,7 @@
   }
 }
 
-/* Custom scrollbars */
+/* Clean neutral scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;

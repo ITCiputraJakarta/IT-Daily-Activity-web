@@ -142,26 +142,26 @@ export const DatabaseStatusModal: React.FC<Props> = ({
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
       <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
         
-        {/* Header */}
-        <div className="p-4 sm:p-5 bg-slate-900 text-white flex items-center justify-between shrink-0">
+        {/* Header (Clean White / Light Theme) */}
+        <div className="p-4 sm:p-5 bg-white border-b border-slate-200 text-slate-900 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className={`p-2.5 rounded-xl ${isOnline ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'}`}>
+            <div className={`p-2.5 rounded-xl ${isOnline ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
               <Database className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-bold text-base sm:text-lg leading-tight">
-                  Status & Keamanan Database
+                <h3 className="font-bold text-base sm:text-lg leading-tight text-slate-900">
+                  Status &amp; Keamanan Database
                 </h3>
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
                   isOnline
-                    ? 'bg-emerald-500 text-slate-950 font-black'
-                    : 'bg-amber-500 text-slate-950 font-black'
+                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 font-extrabold'
+                    : 'bg-amber-100 text-amber-800 border border-amber-300 font-extrabold'
                 }`}>
                   {isOnline ? 'Cloud Online' : 'Penyimpanan Lokal'}
                 </span>
               </div>
-              <p className="text-xs text-slate-400 font-medium">
+              <p className="text-xs text-slate-500 font-medium mt-0.5">
                 Google Firebase Firestore · Hotel Ciputra Jakarta
               </p>
             </div>
@@ -169,7 +169,8 @@ export const DatabaseStatusModal: React.FC<Props> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition"
+            className="p-1.5 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+            title="Tutup Modal"
           >
             <X className="w-5 h-5" />
           </button>

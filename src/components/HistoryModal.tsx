@@ -37,14 +37,23 @@ export const HistoryModal: React.FC<Props> = ({ isOpen, onClose, onSelectDate, c
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-200">
-        <div className="flex items-center justify-between p-4 bg-slate-900 text-white">
-          <div className="flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-emerald-400" />
-            <h3 className="font-semibold text-base">Arsip & Riwayat Laporan Harian</h3>
+        {/* Header (Clean White / Light Theme) */}
+        <div className="flex items-center justify-between p-4 bg-white border-b border-slate-200 text-slate-900">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <Calendar className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-bold text-base text-slate-900">Arsip &amp; Riwayat Laporan Harian</h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Pilih tanggal untuk melihat atau membuka laporan
+              </p>
+            </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+            className="p-1 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer"
+            title="Tutup Modal"
           >
             <X className="w-5 h-5" />
           </button>

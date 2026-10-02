@@ -18,7 +18,10 @@ import {
   getTeamMembersLocalUpdatedAt,
   loadClientUsers,
   saveClientUsersToStorage,
-  getClientUsersLocalUpdatedAt
+  getClientUsersLocalUpdatedAt,
+  loadDepartments,
+  saveDepartmentsToStorage,
+  getDepartmentsLocalUpdatedAt
 } from './data/teamMembers';
 import {
   getCustomLogo,
@@ -41,6 +44,8 @@ import {
   loadTeamMembersFromCloud,
   saveClientUsersToCloud,
   loadClientUsersFromCloud,
+  saveDepartmentsToCloud,
+  loadDepartmentsFromCloud,
   subscribeToActivityReport,
   subscribeToChecklistReport,
   subscribeToTeamMembers,
@@ -68,7 +73,9 @@ import {
   CheckCircle,
   AlertCircle,
   Wifi,
-  Sparkles
+  Sparkles,
+  Edit3,
+  Printer
 } from 'lucide-react';
 
 export default function App() {
@@ -86,6 +93,8 @@ export default function App() {
 
   // Client Users (Hotel Users / Clients & Departments - separate from IT PICs)
   const [clientUsers, setClientUsers] = useState<ClientUser[]>(() => loadClientUsers());
+  const [departments, setDepartments] = useState<string[]>(() => loadDepartments());
+  const [userModalInitialTab, setUserModalInitialTab] = useState<'departments' | 'users'>('departments');
   const [isUserModalOpen, setIsUserModalOpen] = useState<boolean>(false);
 
   // Reports
@@ -384,6 +393,99 @@ export default function App() {
     }
   };
 
+  // Update departments and save to local storage & cloud (cascading renames to clientUsers and logbook)
+  const handleUpdateDepartments = (
+    updated: string[],
+    deptChange?: { oldName: string; newName: string },
+    deletedDept?: string
+  ) => {
+    const now = Date.now();
+    setDepartments(updated);
+    saveDepartmentsToStorage(updated, now);
+    saveDepartmentsToCloud(updated, now).catch(console.error);
+
+    if (deptChange) {
+      const { oldName, newName } = deptChange;
+      // Cascade to ClientUsers
+      setClientUsers((prev) => {
+        let changed = false;
+        const updatedUsers = prev.map((u) => {
+          if (u.department.trim().toLowerCase() === oldName.trim().toLowerCase()) {
+            changed = true;
+            return { ...u, department: newName };
+          }
+          return u;
+        });
+        if (changed) {
+          saveClientUsersToStorage(updatedUsers, now);
+          saveClientUsersToCloud(updatedUsers, now).catch(console.error);
+          return updatedUsers;
+        }
+        return prev;
+      });
+
+      // Cascade to current active Daily Activity report
+      setActivityReport((prev) => {
+        let changed = false;
+        const newActs = prev.logBookActivities.map((act) => {
+          let updatedAct = { ...act };
+          let actChanged = false;
+          if ((act.clientDepartment || '').trim().toLowerCase() === oldName.trim().toLowerCase()) {
+            updatedAct.clientDepartment = newName;
+            actChanged = true;
+          }
+          if ((act.userClient || '').includes(oldName)) {
+            updatedAct.userClient = act.userClient.replace(oldName, newName);
+            actChanged = true;
+          }
+          if (actChanged) {
+            changed = true;
+            return updatedAct;
+          }
+          return act;
+        });
+        if (changed) {
+          const updatedRep = {
+            ...prev,
+            logBookActivities: newActs,
+            updatedAt: now,
+          };
+          latestActRef.current = updatedRep;
+          saveActivityReportLocalImmediate(updatedRep);
+          saveActivityReport(updatedRep).catch(console.error);
+          return updatedRep;
+        }
+        return prev;
+      });
+
+      setNotification(`Nama departemen "${oldName}" diperbarui menjadi "${newName}"`);
+      setTimeout(() => setNotification(null), 3500);
+    }
+
+    if (deletedDept) {
+      const fallbackDept = updated[0] || 'FO (Front Office)';
+      setClientUsers((prev) => {
+        let changed = false;
+        const updatedUsers = prev.map((u) => {
+          if (u.department.trim().toLowerCase() === deletedDept.trim().toLowerCase()) {
+            changed = true;
+            return { ...u, department: fallbackDept };
+          }
+          return u;
+        });
+        if (changed) {
+          saveClientUsersToStorage(updatedUsers, now);
+          saveClientUsersToCloud(updatedUsers, now).catch(console.error);
+          return updatedUsers;
+        }
+        return prev;
+      });
+
+      setNotification(`Departemen "${deletedDept}" berhasil dihapus.`);
+      setTimeout(() => setNotification(null), 3500);
+    }
+  };
+
   // Wrapper for Daily Activity edits: marks as user-modified, updates state, ref, and immediate local storage
   const handleActivityChange = useCallback((updated: DailyActivityReport) => {
     const nextReport: DailyActivityReport = {
@@ -592,6 +694,17 @@ export default function App() {
       if (updatedAt > localUpdated) {
         setClientUsers(users);
         saveClientUsersToStorage(users, updatedAt);
+      }
+    });
+
+    // Initial check if cloud has synced custom departments
+    loadDepartmentsFromCloud().then((cloudData) => {
+      if (cloudData && Array.isArray(cloudData.departments) && cloudData.departments.length > 0) {
+        const localUpdated = getDepartmentsLocalUpdatedAt();
+        if (cloudData.updatedAt > localUpdated) {
+          setDepartments(cloudData.departments);
+          saveDepartmentsToStorage(cloudData.departments, cloudData.updatedAt);
+        }
       }
     });
 
@@ -1192,7 +1305,14 @@ export default function App() {
         isGeneratingPdf={isGeneratingPdf}
         onOpenHistory={() => setIsHistoryOpen(true)}
         onOpenTeamModal={() => setIsTeamModalOpen(true)}
-        onOpenUserModal={() => setIsUserModalOpen(true)}
+        onOpenDepartmentModal={() => {
+          setUserModalInitialTab('departments');
+          setIsUserModalOpen(true);
+        }}
+        onOpenUserModal={() => {
+          setUserModalInitialTab('users');
+          setIsUserModalOpen(true);
+        }}
         onOpenLogoModal={() => setIsLogoModalOpen(true)}
         onOpenQuotaModal={() => setIsQuotaModalOpen(true)}
         onCleanupStorage={handleCleanupStorage}
@@ -1208,17 +1328,18 @@ export default function App() {
 
       {/* Main Container - Tidy & Compact without pushing down */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-4 py-2 sm:py-3">
-        {/* Notification Toast */}
+        {/* Notification Toast (Clean Light / Emerald Theme) */}
         {notification && (
-          <div className="no-print mb-3 p-2.5 sm:p-3 bg-slate-900 text-white text-xs font-semibold rounded-xl flex items-center justify-between shadow-lg border border-slate-700 animate-in fade-in">
+          <div className="no-print mb-3 p-2.5 sm:p-3 bg-emerald-50 text-emerald-950 text-xs font-semibold rounded-xl flex items-center justify-between shadow-xs border border-emerald-300 animate-in fade-in">
             <div className="flex items-center gap-2">
-              <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+              <CheckCircle className="w-4 h-4 text-emerald-700 shrink-0" />
               <span>{notification}</span>
             </div>
             <button
               type="button"
               onClick={() => setNotification(null)}
-              className="text-slate-400 hover:text-white p-1 cursor-pointer"
+              className="text-emerald-700 hover:text-emerald-950 p-1 cursor-pointer font-bold"
+              title="Tutup Notifikasi"
             >
               ✕
             </button>
@@ -1245,8 +1366,16 @@ export default function App() {
                 isSaving={isSaving}
                 teamMembers={teamMembers}
                 onOpenTeamModal={() => setIsTeamModalOpen(true)}
+                departments={departments}
+                onOpenDepartmentModal={() => {
+                  setUserModalInitialTab('departments');
+                  setIsUserModalOpen(true);
+                }}
                 clientUsers={clientUsers}
-                onOpenUserModal={() => setIsUserModalOpen(true)}
+                onOpenUserModal={() => {
+                  setUserModalInitialTab('users');
+                  setIsUserModalOpen(true);
+                }}
                 onSyncTrafficToChecklist={handleSyncTrafficToChecklist}
                 customLogoUrl={customLogoUrl}
                 onOpenLogoModal={() => setIsLogoModalOpen(true)}
@@ -1267,18 +1396,63 @@ export default function App() {
             )}
           </div>
         ) : (
-          <div className="flex justify-center py-2 overflow-x-auto">
-            {activeTab === 'activity' ? (
-              <DailyActivityPrintView
-                report={activityReport}
-                customLogoUrl={customLogoUrl}
-              />
-            ) : (
-              <DailyChecklistPrintView
-                report={checklistReport}
-                customLogoUrl={customLogoUrl}
-              />
-            )}
+          <div className="flex flex-col items-center py-2">
+            {/* Pratinjau Dokumen Action Header */}
+            <div className="no-print w-full max-w-4xl bg-white border border-slate-200 rounded-xl p-3 mb-4 shadow-xs flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-pulse shrink-0"></span>
+                <span className="text-xs font-bold text-slate-900">
+                  Mode Pratinjau Dokumen A4 ({activeTab === 'activity' ? 'Daily Activity' : 'Daily Checklist'})
+                </span>
+                <span className="text-[11px] text-slate-500 hidden sm:inline">
+                  · Sesuai format cetak &amp; unduhan PDF resmi
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('edit')}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-bold transition border border-slate-300 cursor-pointer"
+                  title="Kembali ke formulir untuk mengedit data"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>Kembali ke Formulir</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDownloadPdf}
+                  disabled={isGeneratingPdf}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition shadow-xs disabled:opacity-50 cursor-pointer"
+                  title="Unduh file PDF dokumen A4 langsung"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>{isGeneratingPdf ? 'Membuat PDF...' : 'Unduh PDF A4'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer"
+                  title="Cetak langsung dokumen"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Cetak</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="w-full flex justify-center overflow-x-auto pb-8">
+              {activeTab === 'activity' ? (
+                <DailyActivityPrintView
+                  report={activityReport}
+                  customLogoUrl={customLogoUrl}
+                />
+              ) : (
+                <DailyChecklistPrintView
+                  report={checklistReport}
+                  customLogoUrl={customLogoUrl}
+                />
+              )}
+            </div>
           </div>
         )}
 
@@ -1380,6 +1554,9 @@ export default function App() {
         onClose={() => setIsUserModalOpen(false)}
         clientUsers={clientUsers}
         onUpdateClientUsers={handleUpdateClientUsers}
+        departments={departments}
+        onUpdateDepartments={handleUpdateDepartments}
+        initialTab={userModalInitialTab}
         onSwitchToPicModal={() => setIsTeamModalOpen(true)}
       />
 

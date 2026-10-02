@@ -874,6 +874,45 @@ export async function loadClientUsersFromCloud(): Promise<{ users: ClientUser[];
 }
 
 /**
+ * Save custom ordered departments list to Firestore
+ */
+export async function saveDepartmentsToCloud(departments: string[], updatedAt = Date.now()): Promise<void> {
+  if (!db) return;
+  try {
+    const docRef = doc(db, 'app_settings', 'departments');
+    await setDoc(docRef, sanitizeForFirestore({
+      departments,
+      updatedAt,
+    }));
+  } catch (err) {
+    console.warn('Could not save departments to Firestore:', err);
+  }
+}
+
+/**
+ * Load custom ordered departments list from Firestore
+ */
+export async function loadDepartmentsFromCloud(): Promise<{ departments: string[]; updatedAt: number } | null> {
+  if (!db) return null;
+  try {
+    const docRef = doc(db, 'app_settings', 'departments');
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      if (Array.isArray(data?.departments)) {
+        return {
+          departments: data.departments as string[],
+          updatedAt: typeof data.updatedAt === 'number' ? data.updatedAt : 0,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('Could not load departments from Firestore:', err);
+  }
+  return null;
+}
+
+/**
  * Subscribe in real-time to changes in Daily Activity Report for a given date
  * (Allows multi-device / multi-user instant synchronization)
  */

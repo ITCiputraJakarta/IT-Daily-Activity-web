@@ -104,45 +104,46 @@ export const QuotaMonitorModal: React.FC<Props> = ({
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
       <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200">
         
-        {/* Header */}
-        <div className="p-4 sm:p-5 bg-slate-900 text-white flex items-center justify-between shrink-0">
+        {/* Header (Clean White / Light Theme) */}
+        <div className="p-4 sm:p-5 bg-white border-b border-slate-200 text-slate-900 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+            <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200">
               <Activity className="w-5 h-5 animate-pulse" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-bold text-base sm:text-lg leading-tight">
-                  Monitor Kuota Cloud & Realtime
+                <h3 className="font-bold text-base sm:text-lg leading-tight text-slate-900">
+                  Monitor Kuota Cloud &amp; Realtime
                 </h3>
-                <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-500 text-slate-950 uppercase tracking-wider">
-                  <span className="w-1.5 h-1.5 rounded-full bg-slate-950 animate-ping"></span>
+                <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 uppercase tracking-wider">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-ping"></span>
                   Live Realtime
                 </span>
               </div>
-              <p className="text-xs text-slate-400 font-medium">
-                Pemakaian Harian Google Firebase Firestore & Vercel Edge Hosting
+              <p className="text-xs text-slate-500 font-medium mt-0.5">
+                Pemakaian Harian Google Firebase Firestore &amp; Vercel Edge Hosting
               </p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition cursor-pointer"
+            className="p-1.5 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+            title="Tutup Modal"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Realtime Live Status Banner */}
-        <div className="bg-slate-800 border-b border-slate-700 px-4 py-2 text-xs text-slate-300 flex flex-wrap items-center justify-between gap-2 shrink-0">
+        <div className="bg-slate-50 border-b border-slate-200 px-4 py-2 text-xs text-slate-700 flex flex-wrap items-center justify-between gap-2 shrink-0">
           <div className="flex items-center gap-3">
-            <span className="flex items-center gap-1.5 text-emerald-400 font-semibold">
-              <Radio className="w-3.5 h-3.5 animate-pulse" />
+            <span className="flex items-center gap-1.5 text-emerald-700 font-bold">
+              <Radio className="w-3.5 h-3.5 animate-pulse text-emerald-600" />
               Koneksi Real-time Aktif
             </span>
-            <span className="text-slate-500 hidden sm:inline">•</span>
-            <span className="text-[11px] text-slate-400">
+            <span className="text-slate-300 hidden sm:inline">•</span>
+            <span className="text-[11px] text-slate-500">
               Sinkronisasi terakhir: <strong>{formatLastActive(stats.lastActiveTimestamp)}</strong>
             </span>
           </div>

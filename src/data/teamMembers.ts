@@ -107,3 +107,40 @@ export function saveClientUsersToStorage(users: ClientUser[], updatedAt = Date.n
     console.warn('Failed to save client users to localStorage:', e);
   }
 }
+
+const LS_DEPARTMENTS_KEY = 'hcj_it_departments_v1';
+const LS_DEPARTMENTS_UPDATED_KEY = 'hcj_it_departments_updated_at_v1';
+
+export function loadDepartments(): string[] {
+  try {
+    const raw = localStorage.getItem(LS_DEPARTMENTS_KEY);
+    if (raw !== null) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to load departments from localStorage:', e);
+  }
+  return CLIENT_DEPARTMENTS;
+}
+
+export function getDepartmentsLocalUpdatedAt(): number {
+  try {
+    const raw = localStorage.getItem(LS_DEPARTMENTS_UPDATED_KEY);
+    return raw ? parseInt(raw, 10) || 0 : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function saveDepartmentsToStorage(departments: string[], updatedAt = Date.now()): void {
+  try {
+    localStorage.setItem(LS_DEPARTMENTS_KEY, JSON.stringify(departments));
+    localStorage.setItem(LS_DEPARTMENTS_UPDATED_KEY, String(updatedAt));
+  } catch (e) {
+    console.warn('Failed to save departments to localStorage:', e);
+  }
+}
+

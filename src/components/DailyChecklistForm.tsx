@@ -263,21 +263,21 @@ export const DailyChecklistForm: React.FC<Props> = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 mb-4 border-b border-slate-100 gap-3">
           <div className="flex items-center gap-3">
             <div className="h-11 w-24 sm:w-28 flex items-center justify-center p-1 bg-slate-50 border border-slate-200 rounded-lg shrink-0">
-              <CiputraLogo size="sm" customLogoUrl={customLogoUrl} />
+              <CiputraLogo size="fit" customLogoUrl={customLogoUrl} />
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-base font-bold text-slate-900">
-                  Shift Petugas & Informasi Checklist
+                  Shift Petugas &amp; Informasi Checklist
                 </h2>
-                <span className="text-xs bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded-full">
+                <span className="text-xs bg-slate-100 text-slate-700 font-bold px-2 py-0.5 rounded-full border border-slate-200">
                   {report.items.length} Task
                 </span>
                 {onOpenLogoModal && (
                   <button
                     type="button"
                     onClick={onOpenLogoModal}
-                    className="text-[11px] text-emerald-700 hover:text-emerald-800 font-bold hover:underline ml-1"
+                    className="text-[11px] text-emerald-600 hover:text-emerald-800 font-bold hover:underline ml-1 cursor-pointer"
                   >
                     (Ganti Logo)
                   </button>
@@ -293,18 +293,18 @@ export const DailyChecklistForm: React.FC<Props> = ({
             <button
               type="button"
               onClick={onOpenTeamModal}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-semibold transition"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold transition cursor-pointer"
             >
-              <Users className="w-3.5 h-3.5 text-emerald-700" />
+              <Users className="w-3.5 h-3.5 text-emerald-600" />
               Kelola PIC IT
             </button>
             <button
               type="button"
               onClick={onSave}
               disabled={isSaving}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition shadow-xs disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition shadow-xs disabled:opacity-50 cursor-pointer"
             >
-              <CheckCircle2 className="w-4 h-4" />
+              <CheckCircle2 className="w-4 h-4 text-white" />
               {isSaving ? 'Menyimpan...' : 'Simpan Checklist'}
             </button>
           </div>
@@ -312,7 +312,7 @@ export const DailyChecklistForm: React.FC<Props> = ({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">
+            <label className="block text-xs font-bold text-slate-800 mb-1">
               Property Name
             </label>
             <input
@@ -324,7 +324,7 @@ export const DailyChecklistForm: React.FC<Props> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">
+            <label className="block text-xs font-bold text-slate-800 mb-1">
               Tanggal (Date)
             </label>
             <input
@@ -336,7 +336,7 @@ export const DailyChecklistForm: React.FC<Props> = ({
           </div>
 
           {/* Morning Shift Dropdown */}
-          <div className="bg-amber-50/50 p-3 rounded-xl border border-amber-200 flex flex-col justify-between">
+          <div className="bg-amber-50/60 p-3 rounded-xl border border-amber-200 flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs font-bold text-amber-950 flex items-center gap-1">
@@ -346,7 +346,7 @@ export const DailyChecklistForm: React.FC<Props> = ({
                   type="button"
                   onClick={() => setAllTasksShift('morning')}
                   title="Terapkan petugas Morning ini ke SEMUA task checklist"
-                  className="text-[10px] text-amber-800 hover:text-amber-950 hover:underline font-bold"
+                  className="text-[10px] text-amber-800 hover:underline font-bold cursor-pointer"
                 >
                   Set ke Semua Task
                 </button>
@@ -356,7 +356,7 @@ export const DailyChecklistForm: React.FC<Props> = ({
                 <select
                   value={report.morningShiftPic}
                   onChange={(e) => handleMorningShiftChange(e.target.value)}
-                  className="w-full px-2.5 py-1.5 text-xs md:text-sm rounded-lg border border-amber-300 focus:ring-2 focus:ring-amber-500 bg-white font-semibold text-slate-800"
+                  className="w-full px-2.5 py-1.5 text-xs md:text-sm rounded-lg border border-amber-300 focus:ring-2 focus:ring-amber-500 bg-white font-semibold text-slate-900"
                 >
                   <option value="">-- Pilih Petugas Morning --</option>
                   {activeMembers.map((m) => (
@@ -371,13 +371,13 @@ export const DailyChecklistForm: React.FC<Props> = ({
                 </select>
               </div>
             </div>
-            <p className="text-[10px] text-amber-800/80 font-medium mt-1.5">
+            <p className="text-[10px] text-amber-800 font-medium mt-1.5">
               ✓ Otomatis mengisi PIC pada semua task grup <b>Morning</b>
             </p>
           </div>
 
           {/* Evening Shift Dropdown */}
-          <div className="bg-indigo-50/50 p-3 rounded-xl border border-indigo-200 flex flex-col justify-between">
+          <div className="bg-indigo-50/60 p-3 rounded-xl border border-indigo-200 flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs font-bold text-indigo-950 flex items-center gap-1">
@@ -387,7 +387,7 @@ export const DailyChecklistForm: React.FC<Props> = ({
                   type="button"
                   onClick={() => setAllTasksShift('evening')}
                   title="Terapkan petugas Evening ini ke SEMUA task checklist"
-                  className="text-[10px] text-indigo-800 hover:text-indigo-950 hover:underline font-bold"
+                  className="text-[10px] text-indigo-800 hover:underline font-bold cursor-pointer"
                 >
                   Set ke Semua Task
                 </button>
@@ -397,7 +397,7 @@ export const DailyChecklistForm: React.FC<Props> = ({
                 <select
                   value={report.eveningShiftPic}
                   onChange={(e) => handleEveningShiftChange(e.target.value)}
-                  className="w-full px-2.5 py-1.5 text-xs md:text-sm rounded-lg border border-indigo-300 focus:ring-2 focus:ring-indigo-500 bg-white font-semibold text-slate-800"
+                  className="w-full px-2.5 py-1.5 text-xs md:text-sm rounded-lg border border-indigo-300 focus:ring-2 focus:ring-indigo-500 bg-white font-semibold text-slate-900"
                 >
                   <option value="">-- Pilih Petugas Evening --</option>
                   {activeMembers.map((m) => (
@@ -412,7 +412,7 @@ export const DailyChecklistForm: React.FC<Props> = ({
                 </select>
               </div>
             </div>
-            <p className="text-[10px] text-indigo-800/80 font-medium mt-1.5">
+            <p className="text-[10px] text-indigo-800 font-medium mt-1.5">
               ✓ Otomatis mengisi PIC pada semua task grup <b>Evening</b>
             </p>
           </div>
