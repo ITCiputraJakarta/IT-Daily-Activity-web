@@ -1,5 +1,5 @@
 import React from 'react';
-import { DailyActivityReport } from '../types';
+import { DailyActivityReport, ServerThresholdSettings } from '../types';
 import { CiputraLogo } from './CiputraLogo';
 
 interface Props {
@@ -7,6 +7,7 @@ interface Props {
   page1Ref?: React.RefObject<HTMLDivElement | null>;
   page2Ref?: React.RefObject<HTMLDivElement | null>;
   customLogoUrl?: string | null;
+  thresholds?: ServerThresholdSettings;
 }
 
 export const DailyActivityPrintView: React.FC<Props> = ({
@@ -14,6 +15,7 @@ export const DailyActivityPrintView: React.FC<Props> = ({
   page1Ref,
   page2Ref,
   customLogoUrl,
+  thresholds,
 }) => {
   const formatCleanTemp = (val?: string) => {
     if (!val || !val.trim()) return '-';
@@ -294,7 +296,7 @@ export const DailyActivityPrintView: React.FC<Props> = ({
               )}
               <div className="w-full mt-2 pt-2 border-t border-slate-200 flex justify-between items-center text-xs font-semibold">
                 <span className="bg-slate-100 text-slate-800 px-2.5 py-1 rounded-md font-bold text-[10px] border border-slate-200">
-                  {report.serverTemperature.stdTemp || 'Std 17°C to 23°C'} · {report.serverTemperature.stdHum || 'Hum 45%-55%'}
+                  {thresholds?.stdTempLabel || report.serverTemperature.stdTemp || `Std 17°C to 23°C`} · {thresholds?.stdHumLabel || report.serverTemperature.stdHum || `Hum 45%-55%`}
                 </span>
                 {(report.serverTemperature.currentTemp || report.serverTemperature.currentHum) && (
                   <span className="bg-emerald-50 text-emerald-900 border border-emerald-300 px-3 py-1 rounded-md font-extrabold text-xs">

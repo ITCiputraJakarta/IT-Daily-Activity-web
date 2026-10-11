@@ -3,7 +3,8 @@ import {
   DailyActivityReport,
   DailyChecklistReport,
   TeamMember,
-  ClientUser
+  ClientUser,
+  ServerThresholdSettings
 } from './types';
 import {
   createDefaultActivityReport,
@@ -21,7 +22,10 @@ import {
   getClientUsersLocalUpdatedAt,
   loadDepartments,
   saveDepartmentsToStorage,
-  getDepartmentsLocalUpdatedAt
+  getDepartmentsLocalUpdatedAt,
+  loadServerThresholds,
+  saveServerThresholdsToStorage,
+  getServerThresholdsLocalUpdatedAt
 } from './data/teamMembers';
 import {
   getCustomLogo,
@@ -46,6 +50,9 @@ import {
   loadClientUsersFromCloud,
   saveDepartmentsToCloud,
   loadDepartmentsFromCloud,
+  saveServerThresholdsToCloud,
+  loadServerThresholdsFromCloud,
+  subscribeToServerThresholds,
   subscribeToActivityReport,
   subscribeToChecklistReport,
   subscribeToTeamMembers,
@@ -68,6 +75,7 @@ import { TeamManagementModal } from './components/TeamManagementModal';
 import { UserManagementModal } from './components/UserManagementModal';
 import { LogoManagerModal } from './components/LogoManagerModal';
 import { QuotaMonitorModal } from './components/QuotaMonitorModal';
+import { ServerThresholdModal } from './components/ServerThresholdModal';
 import {
   Download,
   CheckCircle,
@@ -96,6 +104,10 @@ export default function App() {
   const [departments, setDepartments] = useState<string[]>(() => loadDepartments());
   const [userModalInitialTab, setUserModalInitialTab] = useState<'departments' | 'users'>('departments');
   const [isUserModalOpen, setIsUserModalOpen] = useState<boolean>(false);
+
+  // Server Temperature & Humidity Thresholds (Section 4)
+  const [thresholds, setThresholds] = useState<ServerThresholdSettings>(() => loadServerThresholds());
+  const [isThresholdModalOpen, setIsThresholdModalOpen] = useState<boolean>(false);
 
   // Reports
   const [activityReport, setActivityReport] = useState<DailyActivityReport>(() =>
@@ -486,6 +498,36 @@ export default function App() {
     }
   };
 
+  // Update Server Temperature & Humidity thresholds and save to local storage & cloud
+  const handleSaveThresholds = (updated: ServerThresholdSettings) => {
+    const now = Date.now();
+    setThresholds(updated);
+    saveServerThresholdsToStorage(updated, now);
+    saveServerThresholdsToCloud(updated, now).catch(console.error);
+
+    // Cascade new standard keterangan labels to active Daily Activity report
+    setActivityReport((prev) => {
+      const updatedRep: DailyActivityReport = {
+        ...prev,
+        serverTemperature: {
+          ...prev.serverTemperature,
+          stdTemp: updated.stdTempLabel,
+          stdHum: updated.stdHumLabel,
+        },
+        updatedAt: now,
+      };
+      latestActRef.current = updatedRep;
+      saveActivityReportLocalImmediate(updatedRep);
+      saveActivityReport(updatedRep).catch(console.error);
+      return updatedRep;
+    });
+
+    setNotification(
+      `✓ Standar Suhu (${updated.minTemp}°C - ${updated.maxTemp}°C) & Kelembapan (${updated.minHum}% - ${updated.maxHum}%) berhasil disimpan.`
+    );
+    setTimeout(() => setNotification(null), 3500);
+  };
+
   // Wrapper for Daily Activity edits: marks as user-modified, updates state, ref, and immediate local storage
   const handleActivityChange = useCallback((updated: DailyActivityReport) => {
     const nextReport: DailyActivityReport = {
@@ -708,11 +750,31 @@ export default function App() {
       }
     });
 
+    // Initial check if cloud has synced server thresholds
+    loadServerThresholdsFromCloud().then((cloudData) => {
+      if (cloudData) {
+        const localUpdated = getServerThresholdsLocalUpdatedAt();
+        if (cloudData.updatedAt > localUpdated) {
+          setThresholds(cloudData.thresholds);
+          saveServerThresholdsToStorage(cloudData.thresholds, cloudData.updatedAt);
+        }
+      }
+    });
+
+    // Real-time listener for server thresholds
+    const unsubThresholds = subscribeToServerThresholds((thresholdsData, updatedAt) => {
+      const localUpdated = getServerThresholdsLocalUpdatedAt();
+      if (updatedAt > localUpdated) {
+        setThresholds(thresholdsData);
+        saveServerThresholdsToStorage(thresholdsData, updatedAt);
+      }
+    });
+
     runAutoCleanupExpiredRecords().then((res) => {
       const total = res.deletedActivities + res.deletedChecklists;
       if (total > 0) {
         setNotification(
-          `Auto-cleanup storage: ${total} data lama (>2 bulan) berhasil dibersihkan otomatis.`
+          `Auto-cleanup storage: ${total} data lama (>10 bulan) berhasil dibersihkan otomatis.`
         );
       }
     });
@@ -721,6 +783,7 @@ export default function App() {
       unsubLogo();
       unsubTeam();
       unsubClients();
+      unsubThresholds();
     };
   }, [handleCheckDbConnection]);
 
@@ -1272,13 +1335,13 @@ export default function App() {
 
   const handleCleanupStorage = async () => {
     try {
-      setNotification('Sedang memeriksa dan membersihkan data lama (>60 hari)...');
+      setNotification('Sedang memeriksa dan membersihkan data lama (>10 bulan)...');
       const res = await runAutoCleanupExpiredRecords();
       const total = res.deletedActivities + res.deletedChecklists;
       setNotification(
         total > 0
-          ? `✓ Pembersihan berhasil: ${total} dokumen lama (>60 hari) telah dihapus.`
-          : '✓ Pemeriksaan selesai: Semua data dalam batas retensi 60 hari.'
+          ? `✓ Pembersihan berhasil: ${total} dokumen lama (>10 bulan) telah dihapus.`
+          : '✓ Pemeriksaan selesai: Semua data dalam batas retensi 10 bulan.'
       );
       setTimeout(() => setNotification(null), 4000);
     } catch (err) {
@@ -1313,6 +1376,7 @@ export default function App() {
           setUserModalInitialTab('users');
           setIsUserModalOpen(true);
         }}
+        onOpenThresholdModal={() => setIsThresholdModalOpen(true)}
         onOpenLogoModal={() => setIsLogoModalOpen(true)}
         onOpenQuotaModal={() => setIsQuotaModalOpen(true)}
         onCleanupStorage={handleCleanupStorage}
@@ -1355,6 +1419,7 @@ export default function App() {
             customLogoUrl={customLogoUrl}
             onUpdateChecklist={handleChecklistChange}
             onUpdateActivity={handleActivityChange}
+            thresholds={thresholds}
           />
         ) : viewMode === 'edit' ? (
           <div>
@@ -1380,6 +1445,8 @@ export default function App() {
                 customLogoUrl={customLogoUrl}
                 onOpenLogoModal={() => setIsLogoModalOpen(true)}
                 onAutoSaveActivity={handleAutoSaveActivity}
+                thresholds={thresholds}
+                onOpenThresholdModal={() => setIsThresholdModalOpen(true)}
               />
             ) : (
               <DailyChecklistForm
@@ -1445,6 +1512,7 @@ export default function App() {
                 <DailyActivityPrintView
                   report={activityReport}
                   customLogoUrl={customLogoUrl}
+                  thresholds={thresholds}
                 />
               ) : (
                 <DailyChecklistPrintView
@@ -1479,6 +1547,7 @@ export default function App() {
             page1Ref={actPage1Ref}
             page2Ref={actPage2Ref}
             customLogoUrl={customLogoUrl}
+            thresholds={thresholds}
           />
           <DailyChecklistPrintView
             report={checklistReport}
@@ -1495,6 +1564,7 @@ export default function App() {
             <DailyActivityPrintView
               report={activityReport}
               customLogoUrl={customLogoUrl}
+              thresholds={thresholds}
             />
           ) : (
             <DailyChecklistPrintView
@@ -1584,6 +1654,14 @@ export default function App() {
         isDbOnline={isDbOnline}
         onCheckDb={() => handleCheckDbConnection(true)}
         isCheckingDb={isCheckingDb}
+      />
+
+      {/* Server Temperature & Humidity Standards Modal (Section 4) */}
+      <ServerThresholdModal
+        isOpen={isThresholdModalOpen}
+        onClose={() => setIsThresholdModalOpen(false)}
+        thresholds={thresholds}
+        onSaveThresholds={handleSaveThresholds}
       />
     </div>
   );

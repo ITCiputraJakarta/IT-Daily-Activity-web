@@ -17,7 +17,7 @@ import {
   limit,
   onSnapshot
 } from 'firebase/firestore';
-import { DailyActivityReport, DailyChecklistReport, TeamMember, ClientUser } from '../types';
+import { DailyActivityReport, DailyChecklistReport, TeamMember, ClientUser, ServerThresholdSettings } from '../types';
 import {
   createChecklistFromPrevious,
   isChecklistCustomModified,
@@ -72,8 +72,9 @@ export const db = firestoreDb;
 export const COLLECTION_ACTIVITIES = 'daily_activities';
 export const COLLECTION_CHECKLISTS = 'daily_checklists';
 
-export const TWO_MONTHS_MS = 60 * 24 * 60 * 60 * 1000; // 60 days (2 months) retention policy
-export const THIRTY_DAYS_MS = TWO_MONTHS_MS; // backwards compatibility alias
+export const TEN_MONTHS_MS = 300 * 24 * 60 * 60 * 1000; // 300 days (10 months) retention policy
+export const TWO_MONTHS_MS = TEN_MONTHS_MS; // backwards compatibility alias
+export const THIRTY_DAYS_MS = TEN_MONTHS_MS; // backwards compatibility alias
 
 // LocalStorage keys for fallback/offline
 const LS_PREFIX_ACTIVITY = 'hcj_it_activity_';
@@ -639,10 +640,10 @@ export async function loadPreviousChecklistReport(targetDate: string): Promise<D
 }
 
 /**
- * Automatic cleanup of records older than 2 months (60 days)
- * Fulfills: "laporan bertahan selama 2 bulan dari hari ini (today) pada tanggal aktif"
+ * Automatic cleanup of records older than 10 months (~300 days)
+ * Fulfills: "laporan bertahan selama 10 bulan dari hari ini (today) pada tanggal aktif"
  */
-export async function runAutoCleanupExpiredRecords(maxAgeMs = TWO_MONTHS_MS): Promise<{ deletedActivities: number; deletedChecklists: number }> {
+export async function runAutoCleanupExpiredRecords(maxAgeMs = TEN_MONTHS_MS): Promise<{ deletedActivities: number; deletedChecklists: number }> {
   const now = Date.now();
   const cutoffTime = now - maxAgeMs;
   let deletedActivities = 0;
@@ -699,7 +700,7 @@ export async function runAutoCleanupExpiredRecords(maxAgeMs = TWO_MONTHS_MS): Pr
 }
 
 /**
- * List all saved report dates (optimized query with 60-day limit)
+ * List all saved report dates (optimized query with 10-month / 310-day limit)
  */
 export async function getSavedReportDates(): Promise<{ activityDates: string[]; checklistDates: string[] }> {
   const activityDates: Set<string> = new Set();
@@ -710,7 +711,7 @@ export async function getSavedReportDates(): Promise<{ activityDates: string[]; 
       const actQuery = query(
         collection(db, COLLECTION_ACTIVITIES),
         orderBy('date', 'desc'),
-        limit(60)
+        limit(310)
       );
       const actSnap = await getDocs(actQuery);
       actSnap.forEach((d) => activityDates.add(d.id));
@@ -727,7 +728,7 @@ export async function getSavedReportDates(): Promise<{ activityDates: string[]; 
       const checkQuery = query(
         collection(db, COLLECTION_CHECKLISTS),
         orderBy('date', 'desc'),
-        limit(60)
+        limit(310)
       );
       const checkSnap = await getDocs(checkQuery);
       checkSnap.forEach((d) => checklistDates.add(d.id));
@@ -910,6 +911,97 @@ export async function loadDepartmentsFromCloud(): Promise<{ departments: string[
     console.warn('Could not load departments from Firestore:', err);
   }
   return null;
+}
+
+/**
+ * Save server temperature & humidity threshold settings to Firestore
+ */
+export async function saveServerThresholdsToCloud(
+  thresholds: ServerThresholdSettings,
+  updatedAt = Date.now()
+): Promise<void> {
+  if (!db) return;
+  try {
+    const docRef = doc(db, 'app_settings', 'server_thresholds');
+    await setDoc(docRef, sanitizeForFirestore({
+      ...thresholds,
+      updatedAt,
+    }));
+  } catch (err) {
+    console.warn('Could not save server thresholds to Firestore:', err);
+  }
+}
+
+/**
+ * Load server temperature & humidity threshold settings from Firestore
+ */
+export async function loadServerThresholdsFromCloud(): Promise<{
+  thresholds: ServerThresholdSettings;
+  updatedAt: number;
+} | null> {
+  if (!db) return null;
+  try {
+    const docRef = doc(db, 'app_settings', 'server_thresholds');
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      if (typeof data?.minTemp === 'number' && typeof data?.maxTemp === 'number') {
+        return {
+          thresholds: {
+            minTemp: data.minTemp,
+            maxTemp: data.maxTemp,
+            minHum: typeof data.minHum === 'number' ? data.minHum : 45,
+            maxHum: typeof data.maxHum === 'number' ? data.maxHum : 55,
+            stdTempLabel: data.stdTempLabel || `Std ${data.minTemp}°C to ${data.maxTemp}°C`,
+            stdHumLabel: data.stdHumLabel || `Hum ${data.minHum ?? 45}%-${data.maxHum ?? 55}%`,
+            updatedAt: typeof data.updatedAt === 'number' ? data.updatedAt : 0,
+          },
+          updatedAt: typeof data.updatedAt === 'number' ? data.updatedAt : 0,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('Could not load server thresholds from Firestore:', err);
+  }
+  return null;
+}
+
+/**
+ * Subscribe in real-time to Server Temperature & Humidity thresholds changes
+ */
+export function subscribeToServerThresholds(
+  onUpdate: (thresholds: ServerThresholdSettings, updatedAt: number) => void
+): () => void {
+  if (!db) return () => {};
+  try {
+    const docRef = doc(db, 'app_settings', 'server_thresholds');
+    return onSnapshot(
+      docRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          if (typeof data?.minTemp === 'number' && typeof data?.maxTemp === 'number') {
+            onUpdate(
+              {
+                minTemp: data.minTemp,
+                maxTemp: data.maxTemp,
+                minHum: typeof data.minHum === 'number' ? data.minHum : 45,
+                maxHum: typeof data.maxHum === 'number' ? data.maxHum : 55,
+                stdTempLabel: data.stdTempLabel || `Std ${data.minTemp}°C to ${data.maxTemp}°C`,
+                stdHumLabel: data.stdHumLabel || `Hum ${data.minHum ?? 45}%-${data.maxHum ?? 55}%`,
+                updatedAt: typeof data.updatedAt === 'number' ? data.updatedAt : 0,
+              },
+              typeof data.updatedAt === 'number' ? data.updatedAt : 0
+            );
+          }
+        }
+      },
+      (err) => console.warn('Server thresholds realtime listener warning:', err)
+    );
+  } catch (err) {
+    console.warn('Failed to set up server thresholds listener:', err);
+    return () => {};
+  }
 }
 
 /**

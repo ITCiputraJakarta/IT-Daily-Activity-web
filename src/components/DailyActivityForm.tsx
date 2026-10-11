@@ -1,5 +1,5 @@
 import React, { useRef, useState, useMemo } from 'react';
-import { DailyActivityReport, LogBookItem, TeamMember, ClientUser } from '../types';
+import { DailyActivityReport, LogBookItem, TeamMember, ClientUser, ServerThresholdSettings } from '../types';
 import { CLIENT_DEPARTMENTS } from '../data/teamMembers';
 import { createDefaultActivityReport } from '../data/defaults';
 import { compressImage } from '../utils/imageUtils';
@@ -46,6 +46,8 @@ interface Props {
   customLogoUrl?: string | null;
   onOpenLogoModal?: () => void;
   onAutoSaveActivity?: (updated: DailyActivityReport) => void;
+  thresholds?: ServerThresholdSettings;
+  onOpenThresholdModal?: () => void;
 }
 
 type ActivitySortOption = 'no-desc' | 'no-asc' | 'user-asc' | 'dept-asc' | 'pic-asc' | 'status';
@@ -65,6 +67,8 @@ export const DailyActivityForm: React.FC<Props> = ({
   customLogoUrl,
   onOpenLogoModal,
   onAutoSaveActivity,
+  thresholds,
+  onOpenThresholdModal,
 }) => {
   // Separate refs for live camera capture vs gallery picker
   const cameraInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
@@ -511,8 +515,16 @@ export const DailyActivityForm: React.FC<Props> = ({
 
   const tempNum = parseFloat(rawTemp);
   const humNum = parseFloat(rawHum);
-  const isTempNormal = !isNaN(tempNum) && tempNum >= 17 && tempNum <= 23;
-  const isHumNormal = !isNaN(humNum) && humNum >= 45 && humNum <= 55;
+
+  const activeMinTemp = thresholds?.minTemp ?? 17;
+  const activeMaxTemp = thresholds?.maxTemp ?? 23;
+  const activeMinHum = thresholds?.minHum ?? 45;
+  const activeMaxHum = thresholds?.maxHum ?? 55;
+
+  const hasTempInput = !isNaN(tempNum);
+  const hasHumInput = !isNaN(humNum);
+  const isTempNormal = hasTempInput && tempNum >= activeMinTemp && tempNum <= activeMaxTemp;
+  const isHumNormal = hasHumInput && humNum >= activeMinHum && humNum <= activeMaxHum;
 
   return (
     <div className="space-y-6 pb-16 font-sans">
@@ -1638,7 +1650,7 @@ export const DailyActivityForm: React.FC<Props> = ({
             <span className="w-3 h-3 rounded-full bg-yellow-400"></span>
             <div>
               <h2 className="text-base font-bold text-slate-900">
-                4. Server Temperature (Suhu & Kelembapan Ruang Server)
+                4. Server Temperature (Suhu &amp; Kelembapan Ruang Server)
               </h2>
               <p className="text-xs text-slate-500">
                 Foto layar ThermoPro langsung dengan kamera atau upload dari galeri
@@ -1646,15 +1658,33 @@ export const DailyActivityForm: React.FC<Props> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {onOpenThresholdModal && (
+              <button
+                type="button"
+                onClick={onOpenThresholdModal}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-xs font-bold transition cursor-pointer shadow-2xs"
+                title="Sesuaikan standar suhu & kelembapan ruang server"
+              >
+                <Thermometer className="w-3.5 h-3.5 text-amber-600" />
+                <span>Atur Standar ({activeMinTemp}°C - {activeMaxTemp}°C)</span>
+              </button>
+            )}
+
             <span
-              className={`text-xs font-bold px-2.5 py-1 rounded-full border ${
-                isTempNormal && isHumNormal
+              className={`text-xs font-bold px-2.5 py-1 rounded-full border flex items-center gap-1 ${
+                !hasTempInput && !hasHumInput
+                  ? 'bg-slate-50 text-slate-700 border-slate-300'
+                  : isTempNormal && isHumNormal
                   ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                  : 'bg-amber-50 text-amber-800 border-amber-300'
+                  : 'bg-amber-50 text-amber-900 border-amber-300'
               }`}
             >
-              {isTempNormal && isHumNormal ? '✓ Kondisi Normal' : '⚠ Periksa Batas Standar'}
+              {!hasTempInput && !hasHumInput
+                ? `Standar: ${activeMinTemp}°C-${activeMaxTemp}°C · ${activeMinHum}%-${activeMaxHum}%`
+                : isTempNormal && isHumNormal
+                ? '✓ Kondisi Normal Sesuai Standar'
+                : '⚠ Di Luar Batas Standar'}
             </span>
           </div>
         </div>
@@ -1808,9 +1838,14 @@ export const DailyActivityForm: React.FC<Props> = ({
                       °C
                     </span>
                   </div>
-                  <span className="text-[10px] text-slate-500 mt-0.5 block">
-                    Standar: <strong>17°C - 23°C</strong>
-                  </span>
+                  <div className="flex items-center justify-between mt-1 text-[10px] text-slate-500">
+                    <span>Standar: <strong>{activeMinTemp}°C - {activeMaxTemp}°C</strong></span>
+                    {hasTempInput && (
+                      <span className={`font-bold ${isTempNormal ? 'text-emerald-700' : 'text-amber-700'}`}>
+                        {isTempNormal ? '✓ Normal' : tempNum < activeMinTemp ? '⚠ Dingin' : '⚠ Panas'}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Humidity Input */}
@@ -1837,10 +1872,35 @@ export const DailyActivityForm: React.FC<Props> = ({
                       %
                     </span>
                   </div>
-                  <span className="text-[10px] text-slate-500 mt-0.5 block">
-                    Standar: <strong>45% - 55%</strong>
-                  </span>
+                  <div className="flex items-center justify-between mt-1 text-[10px] text-slate-500">
+                    <span>Standar: <strong>{activeMinHum}% - {activeMaxHum}%</strong></span>
+                    {hasHumInput && (
+                      <span className={`font-bold ${isHumNormal ? 'text-emerald-700' : 'text-amber-700'}`}>
+                        {isHumNormal ? '✓ Normal' : humNum < activeMinHum ? '⚠ Kering' : '⚠ Lembap'}
+                      </span>
+                    )}
+                  </div>
                 </div>
+              </div>
+
+              {/* Standard Print Caption Bar */}
+              <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between text-[10.5px] text-slate-600 flex-wrap gap-1">
+                <span>
+                  Keterangan Standar Dokumen A4:{' '}
+                  <strong className="text-slate-800">
+                    {thresholds?.stdTempLabel || report.serverTemperature.stdTemp || `Std ${activeMinTemp}°C to ${activeMaxTemp}°C`} ·{' '}
+                    {thresholds?.stdHumLabel || report.serverTemperature.stdHum || `Hum ${activeMinHum}%-${activeMaxHum}%`}
+                  </strong>
+                </span>
+                {onOpenThresholdModal && (
+                  <button
+                    type="button"
+                    onClick={onOpenThresholdModal}
+                    className="text-amber-800 hover:text-amber-900 font-bold hover:underline cursor-pointer"
+                  >
+                    Ubah Standar
+                  </button>
+                )}
               </div>
             </div>
 

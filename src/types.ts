@@ -57,6 +57,16 @@ export interface ServerTemperature {
   notes?: string;
 }
 
+export interface ServerThresholdSettings {
+  minTemp: number; // e.g. 17 or 18
+  maxTemp: number; // e.g. 23 or 24
+  minHum: number;  // e.g. 45 or 40
+  maxHum: number;  // e.g. 55 or 60
+  stdTempLabel: string; // e.g. "Std 17°C to 23°C"
+  stdHumLabel: string;  // e.g. "Hum 45%-55%"
+  updatedAt?: number;
+}
+
 export interface DailyActivityReport {
   id: string; // usually YYYY-MM-DD
   date: string; // YYYY-MM-DD
@@ -73,7 +83,7 @@ export interface DailyActivityReport {
   isUserModified?: boolean; // true when user has filled in fields or uploaded photos
   createdAt: number;
   updatedAt: number;
-  expiresAt: number; // 60 days after creation
+  expiresAt: number; // 10 months (~300 days) retention after creation
 }
 
 export interface ChecklistItem {
@@ -100,7 +110,7 @@ export interface DailyChecklistReport {
   isUserModified?: boolean; // true when explicitly edited on this date; false when inherited default from previous date
   createdAt: number;
   updatedAt: number;
-  expiresAt: number; // 60 days after creation
+  expiresAt: number; // 10 months (~300 days) retention after creation
 }
 
 export interface AppNotification {

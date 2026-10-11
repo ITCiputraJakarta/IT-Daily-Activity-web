@@ -3,6 +3,7 @@ import {
   DailyActivityReport,
   DailyChecklistReport,
   TeamMember,
+  ServerThresholdSettings,
 } from '../types';
 import { CiputraLogo } from './CiputraLogo';
 import { compressImage } from '../utils/imageUtils';
@@ -41,6 +42,7 @@ interface WaReportViewProps {
   customLogoUrl: string | null;
   onUpdateChecklist: (updated: DailyChecklistReport) => void;
   onUpdateActivity?: (updated: DailyActivityReport) => void;
+  thresholds?: ServerThresholdSettings;
 }
 
 export const WaReportView: React.FC<WaReportViewProps> = ({
@@ -50,6 +52,7 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
   customLogoUrl,
   onUpdateChecklist,
   onUpdateActivity,
+  thresholds,
 }) => {
   const [layoutMode, setLayoutMode] = useState<'a4' | 'wide'>('wide');
   const [mobileFit, setMobileFit] = useState<boolean>(false);
@@ -638,9 +641,32 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                       Server Room Temperature
                     </h2>
                   </div>
-                  <span className="text-[8.5px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded flex items-center gap-0.5">
-                    <CheckCircle2 className="w-2.5 h-2.5" /> Normal
-                  </span>
+                  {(() => {
+                    const rawT = (activityReport.serverTemperature?.currentTemp || '').replace(/[^\d.]/g, '');
+                    const rawH = (activityReport.serverTemperature?.currentHum || '').replace(/[^\d.]/g, '');
+                    const tNum = parseFloat(rawT);
+                    const hNum = parseFloat(rawH);
+                    const minT = thresholds?.minTemp ?? 17;
+                    const maxT = thresholds?.maxTemp ?? 23;
+                    const minH = thresholds?.minHum ?? 45;
+                    const maxH = thresholds?.maxHum ?? 55;
+                    const isTNorm = !isNaN(tNum) ? (tNum >= minT && tNum <= maxT) : true;
+                    const isHNorm = !isNaN(hNum) ? (hNum >= minH && hNum <= maxH) : true;
+                    const isAllNorm = isTNorm && isHNorm;
+                    return (
+                      <span className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5 ${
+                        isAllNorm
+                          ? 'text-emerald-800 bg-emerald-100'
+                          : 'text-amber-900 bg-amber-100'
+                      }`}>
+                        {isAllNorm ? (
+                          <><CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" /> Normal</>
+                        ) : (
+                          <><AlertTriangle className="w-2.5 h-2.5 text-amber-600" /> Alert</>
+                        )}
+                      </span>
+                    );
+                  })()}
                 </div>
 
                 {/* Metrics with single unit */}
@@ -653,7 +679,7 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                       {formatTempValue(activityReport.serverTemperature?.currentTemp)}
                     </div>
                     <span className="text-[8px] text-slate-500 font-medium">
-                      Std: 17°C - 23°C
+                      Std: {thresholds?.minTemp ?? 17}°C - {thresholds?.maxTemp ?? 23}°C
                     </span>
                   </div>
 
@@ -665,7 +691,7 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                       {formatHumValue(activityReport.serverTemperature?.currentHum)}
                     </div>
                     <span className="text-[8px] text-slate-500 font-medium">
-                      Std: 45% - 55%
+                      Std: {thresholds?.minHum ?? 45}% - {thresholds?.maxHum ?? 55}%
                     </span>
                   </div>
                 </div>

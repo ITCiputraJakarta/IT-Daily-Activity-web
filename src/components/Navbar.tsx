@@ -25,7 +25,8 @@ import {
   Database,
   Image as ImageIcon,
   HardDrive,
-  Layers
+  Layers,
+  Thermometer
 } from 'lucide-react';
 import {
   getQuotaStats,
@@ -50,6 +51,7 @@ interface Props {
   onOpenTeamModal: () => void;
   onOpenDepartmentModal?: () => void;
   onOpenUserModal: () => void;
+  onOpenThresholdModal?: () => void;
   onOpenLogoModal: () => void;
   onOpenQuotaModal: () => void;
   onCleanupStorage?: () => void;
@@ -76,6 +78,7 @@ export const Navbar: React.FC<Props> = ({
   onOpenTeamModal,
   onOpenDepartmentModal,
   onOpenUserModal,
+  onOpenThresholdModal,
   onOpenLogoModal,
   onOpenQuotaModal,
   onCleanupStorage,
@@ -330,6 +333,25 @@ export const Navbar: React.FC<Props> = ({
                   </div>
                 </button>
 
+                {onOpenThresholdModal && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      onOpenThresholdModal();
+                    }}
+                    className="w-full px-3 py-2 text-left text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition cursor-pointer font-medium"
+                  >
+                    <Thermometer className="w-4 h-4 text-amber-600 shrink-0" />
+                    <div>
+                      <span className="block font-bold text-slate-900">Standar Suhu &amp; Kelembapan</span>
+                      <span className="block text-[10px] text-slate-500 font-normal">
+                        Batas suhu &amp; kelembapan ruang server (Section 4)
+                      </span>
+                    </div>
+                  </button>
+                )}
+
                 <div className="my-1 border-t border-slate-100"></div>
 
                 <button
@@ -527,6 +549,23 @@ export const Navbar: React.FC<Props> = ({
                     </div>
                   </button>
 
+                  {onOpenThresholdModal && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMenuOpen(false);
+                        onOpenThresholdModal();
+                      }}
+                      className="w-full px-3 py-2 text-left text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition cursor-pointer font-medium"
+                    >
+                      <Thermometer className="w-4 h-4 text-amber-600 shrink-0" />
+                      <div>
+                        <span className="block font-bold text-slate-900">Standar Suhu &amp; Kelembapan</span>
+                        <span className="block text-[10px] text-slate-500">Batas suhu &amp; kelembapan server (Section 4)</span>
+                      </div>
+                    </button>
+                  )}
+
                   <div className="my-1 border-t border-slate-100"></div>
 
                   <button
@@ -721,9 +760,14 @@ export const Navbar: React.FC<Props> = ({
             <div className="bg-slate-200/80 border border-slate-300 rounded-lg p-0.5 flex items-center shrink-0">
               <button
                 type="button"
-                onClick={() => setViewMode('edit')}
+                onClick={() => {
+                  setViewMode('edit');
+                  if (activeTab === 'wareport') {
+                    setActiveTab('activity');
+                  }
+                }}
                 className={`inline-flex items-center gap-1 px-2 sm:px-2.5 py-0.5 rounded-md text-xs font-semibold transition cursor-pointer ${
-                  viewMode === 'edit'
+                  viewMode === 'edit' && activeTab !== 'wareport'
                     ? 'bg-white text-slate-900 shadow-2xs font-bold'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
@@ -734,9 +778,14 @@ export const Navbar: React.FC<Props> = ({
               </button>
               <button
                 type="button"
-                onClick={() => setViewMode('preview')}
+                onClick={() => {
+                  setViewMode('preview');
+                  if (activeTab === 'wareport') {
+                    setActiveTab('activity');
+                  }
+                }}
                 className={`inline-flex items-center gap-1 px-2 sm:px-2.5 py-0.5 rounded-md text-xs font-semibold transition cursor-pointer ${
-                  viewMode === 'preview'
+                  viewMode === 'preview' && activeTab !== 'wareport'
                     ? 'bg-white text-slate-900 shadow-2xs font-bold'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}

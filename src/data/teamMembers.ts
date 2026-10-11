@@ -1,4 +1,13 @@
-import { TeamMember, ClientUser } from '../types';
+import { TeamMember, ClientUser, ServerThresholdSettings } from '../types';
+
+export const DEFAULT_SERVER_THRESHOLDS: ServerThresholdSettings = {
+  minTemp: 17,
+  maxTemp: 23,
+  minHum: 45,
+  maxHum: 55,
+  stdTempLabel: 'Std 17°C to 23°C',
+  stdHumLabel: 'Hum 45%-55%',
+};
 
 export const DEFAULT_TEAM_MEMBERS: TeamMember[] = [
   { id: 'tm-1', name: 'Ramdhani', role: 'IT Support', isActive: true },
@@ -143,4 +152,53 @@ export function saveDepartmentsToStorage(departments: string[], updatedAt = Date
     console.warn('Failed to save departments to localStorage:', e);
   }
 }
+
+const LS_SERVER_THRESHOLDS_KEY = 'hcj_it_server_thresholds_v1';
+const LS_SERVER_THRESHOLDS_UPDATED_KEY = 'hcj_it_server_thresholds_updated_at_v1';
+
+export function loadServerThresholds(): ServerThresholdSettings {
+  try {
+    const raw = localStorage.getItem(LS_SERVER_THRESHOLDS_KEY);
+    if (raw !== null) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed.minTemp === 'number' && typeof parsed.maxTemp === 'number') {
+        return {
+          minTemp: parsed.minTemp,
+          maxTemp: parsed.maxTemp,
+          minHum: typeof parsed.minHum === 'number' ? parsed.minHum : 45,
+          maxHum: typeof parsed.maxHum === 'number' ? parsed.maxHum : 55,
+          stdTempLabel: parsed.stdTempLabel || `Std ${parsed.minTemp}°C to ${parsed.maxTemp}°C`,
+          stdHumLabel: parsed.stdHumLabel || `Hum ${parsed.minHum ?? 45}%-${parsed.maxHum ?? 55}%`,
+          updatedAt: typeof parsed.updatedAt === 'number' ? parsed.updatedAt : 0,
+        };
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to load server thresholds from localStorage:', e);
+  }
+  return DEFAULT_SERVER_THRESHOLDS;
+}
+
+export function getServerThresholdsLocalUpdatedAt(): number {
+  try {
+    const raw = localStorage.getItem(LS_SERVER_THRESHOLDS_UPDATED_KEY);
+    return raw ? parseInt(raw, 10) || 0 : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function saveServerThresholdsToStorage(
+  thresholds: ServerThresholdSettings,
+  updatedAt = Date.now()
+): void {
+  try {
+    const dataWithTs = { ...thresholds, updatedAt };
+    localStorage.setItem(LS_SERVER_THRESHOLDS_KEY, JSON.stringify(dataWithTs));
+    localStorage.setItem(LS_SERVER_THRESHOLDS_UPDATED_KEY, String(updatedAt));
+  } catch (e) {
+    console.warn('Failed to save server thresholds to localStorage:', e);
+  }
+}
+
 

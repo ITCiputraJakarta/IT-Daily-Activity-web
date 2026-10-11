@@ -58,8 +58,8 @@ export const QuotaMonitorModal: React.FC<Props> = ({
       setStorageInfo(estimateCurrentStorage());
       setCleanupNotice(
         total > 0
-          ? `✓ Pembersihan berhasil: ${total} dokumen lama (>60 hari) telah dihapus.`
-          : '✓ Pemeriksaan selesai: Seluruh data saat ini masih dalam batas retensi 60 hari.'
+          ? `✓ Pembersihan berhasil: ${total} dokumen lama (>10 bulan) telah dihapus.`
+          : '✓ Pemeriksaan selesai: Seluruh data saat ini masih dalam batas retensi 10 bulan.'
       );
     } catch (err) {
       console.error(err);
@@ -332,15 +332,15 @@ export const QuotaMonitorModal: React.FC<Props> = ({
 
               </div>
 
-              {/* 60-Day Storage Retention & Cleanup Tool */}
+              {/* 10-Month Storage Retention & Cleanup Tool */}
               <div className="p-3 bg-linear-to-r from-emerald-50 to-slate-50 border border-emerald-200 rounded-xl text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-1.5 font-bold text-emerald-950">
                     <HardDrive className="w-3.5 h-3.5 text-emerald-700" />
-                    <span>Kebijakan Retensi 60 Hari (2 Bulan):</span>
+                    <span>Kebijakan Retensi 10 Bulan (~300 Hari):</span>
                   </div>
                   <p className="text-[11px] text-slate-600 leading-tight">
-                    Data laporan &amp; foto dipertahankan otomatis selama 60 hari. Dokumen lama akan dibersihkan agar kapasitas 1 GB selalu terjaga aman.
+                    Data laporan &amp; foto dipertahankan otomatis selama 10 bulan. Dokumen yang lebih dari 10 bulan akan dibersihkan agar kapasitas storage tetap aman.
                   </p>
                   {cleanupNotice && (
                     <p className="text-[11px] font-semibold text-emerald-800 pt-0.5 animate-in fade-in">
@@ -355,7 +355,7 @@ export const QuotaMonitorModal: React.FC<Props> = ({
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold transition disabled:opacity-50 shadow-2xs shrink-0 self-start sm:self-auto cursor-pointer"
                 >
                   <Trash2 className={`w-3.5 h-3.5 ${isCleaning ? 'animate-spin' : ''}`} />
-                  <span>{isCleaning ? 'Membersihkan...' : 'Bersihkan Data > 60 Hari'}</span>
+                  <span>{isCleaning ? 'Membersihkan...' : 'Bersihkan Data > 10 Bulan'}</span>
                 </button>
               </div>
             </div>

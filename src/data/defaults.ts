@@ -1,6 +1,6 @@
-import { ChecklistItem, DailyActivityReport, DailyChecklistReport } from '../types';
+import { ChecklistItem, DailyActivityReport, DailyChecklistReport, ServerThresholdSettings } from '../types';
 import { formatReportDate, getTodayDateString } from '../utils/imageUtils';
-import { loadTeamMembers } from './teamMembers';
+import { loadTeamMembers, loadServerThresholds } from './teamMembers';
 import {
   SAMPLE_ERTFLIX_IMG,
   SAMPLE_PCCAFE_IMG,
@@ -64,7 +64,7 @@ export function createDefaultChecklistReport(dateStr?: string): DailyChecklistRe
     isUserModified: false,
     createdAt: Date.now(),
     updatedAt: 0,
-    expiresAt: Date.now() + 60 * 24 * 60 * 60 * 1000, // 2 months (60 days) retention
+    expiresAt: Date.now() + 300 * 24 * 60 * 60 * 1000, // 10 months (~300 days) retention
   };
 }
 
@@ -140,13 +140,17 @@ export function createChecklistFromPrevious(
     isUserModified: false,
     createdAt: now,
     updatedAt: 0,
-    expiresAt: now + 60 * 24 * 60 * 60 * 1000,
+    expiresAt: now + 300 * 24 * 60 * 60 * 1000, // 10 months (~300 days) retention
   };
 }
 
-export function createDefaultActivityReport(dateStr?: string): DailyActivityReport {
+export function createDefaultActivityReport(
+  dateStr?: string,
+  customThresholds?: ServerThresholdSettings
+): DailyActivityReport {
   const date = dateStr || getTodayDateString();
   const activeMembers = loadTeamMembers().filter((m) => m.isActive);
+  const activeThresholds = customThresholds || loadServerThresholds();
   const pickPic = (idx: number) =>
     activeMembers.length > 0 ? activeMembers[idx % activeMembers.length].name : '';
 
@@ -214,8 +218,8 @@ export function createDefaultActivityReport(dateStr?: string): DailyActivityRepo
     serverTemperature: {
       enabled: true,
       title: '4. Server Temperature',
-      stdTemp: 'Std 17°C to 23°C',
-      stdHum: 'Hum 45%-55%',
+      stdTemp: activeThresholds.stdTempLabel || `Std ${activeThresholds.minTemp}°C to ${activeThresholds.maxTemp}°C`,
+      stdHum: activeThresholds.stdHumLabel || `Hum ${activeThresholds.minHum}%-${activeThresholds.maxHum}%`,
       currentTemp: '',
       currentHum: '',
       photoUrl: '',
@@ -225,7 +229,7 @@ export function createDefaultActivityReport(dateStr?: string): DailyActivityRepo
     isUserModified: false,
     createdAt: Date.now(),
     updatedAt: 0,
-    expiresAt: Date.now() + 60 * 24 * 60 * 60 * 1000, // 2 months (60 days) retention
+    expiresAt: Date.now() + 300 * 24 * 60 * 60 * 1000, // 10 months (~300 days) retention
   };
 }
 
