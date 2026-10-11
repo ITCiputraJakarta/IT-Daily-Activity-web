@@ -905,9 +905,9 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                   <thead>
                     <tr className="bg-[#d97706] text-white font-bold text-[8.5px] border-b border-amber-700">
                       <th className="py-1 px-1 w-6 text-center">No</th>
-                      <th className="py-1 px-1.5 text-left w-40">Task List</th>
-                      <th className="py-1 px-1 text-center w-16">Shift / PIC</th>
-                      <th className="py-1 px-1 text-center w-12">Status</th>
+                      <th className="py-1 px-1.5 text-left w-36 sm:w-40">Task List</th>
+                      <th className="py-1 px-1 text-center w-14 sm:w-16">Shift / PIC</th>
+                      <th className="py-1 px-1 text-center w-10 sm:w-12">Status</th>
                       <th className="py-1 px-1.5 text-left">Remark / Description</th>
                     </tr>
                   </thead>
@@ -925,7 +925,7 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                           {item.no}
                         </td>
                         <td className="py-0.5 px-1.5 font-semibold text-slate-900 leading-tight">
-                          <span className="block truncate max-w-[155px]" title={item.taskList}>
+                          <span className="block break-words whitespace-normal text-[8.5px]" title={item.taskList}>
                             {item.taskList}
                           </span>
                         </td>
@@ -960,7 +960,7 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                         </td>
                         <td className="py-0.5 px-1.5 text-slate-700 leading-tight">
                           <span
-                            className={`block truncate max-w-[145px] ${
+                            className={`block break-words whitespace-normal text-[8.5px] ${
                               item.status === 'Issue' ? 'text-red-700 font-bold' : ''
                             }`}
                             title={item.remark}
@@ -980,9 +980,9 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                   <thead>
                     <tr className="bg-[#d97706] text-white font-bold text-[8.5px] border-b border-amber-700">
                       <th className="py-1 px-1 w-6 text-center">No</th>
-                      <th className="py-1 px-1.5 text-left w-40">Task List</th>
-                      <th className="py-1 px-1 text-center w-16">Shift / PIC</th>
-                      <th className="py-1 px-1 text-center w-12">Status</th>
+                      <th className="py-1 px-1.5 text-left w-36 sm:w-40">Task List</th>
+                      <th className="py-1 px-1 text-center w-14 sm:w-16">Shift / PIC</th>
+                      <th className="py-1 px-1 text-center w-10 sm:w-12">Status</th>
                       <th className="py-1 px-1.5 text-left">Remark / Description</th>
                     </tr>
                   </thead>
@@ -1000,7 +1000,7 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                           {item.no}
                         </td>
                         <td className="py-0.5 px-1.5 font-semibold text-slate-900 leading-tight">
-                          <span className="block truncate max-w-[155px]" title={item.taskList}>
+                          <span className="block break-words whitespace-normal text-[8.5px]" title={item.taskList}>
                             {item.taskList}
                           </span>
                         </td>
@@ -1035,7 +1035,7 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                         </td>
                         <td className="py-0.5 px-1.5 text-slate-700 leading-tight">
                           <span
-                            className={`block truncate max-w-[145px] ${
+                            className={`block break-words whitespace-normal text-[8.5px] ${
                               item.status === 'Issue' ? 'text-red-700 font-bold' : ''
                             }`}
                             title={item.remark}
