@@ -36,8 +36,8 @@ import {
 } from '../services/quotaTracker';
 
 interface Props {
-  activeTab: 'activity' | 'checklist' | 'wareport';
-  setActiveTab: (tab: 'activity' | 'checklist' | 'wareport') => void;
+  activeTab: 'activity' | 'checklist' | 'wareport' | 'weekly';
+  setActiveTab: (tab: 'activity' | 'checklist' | 'wareport' | 'weekly') => void;
   viewMode: 'edit' | 'preview';
   setViewMode: (mode: 'edit' | 'preview') => void;
   selectedDate: string;
@@ -734,6 +734,19 @@ export const Navbar: React.FC<Props> = ({
             >
               <MessageSquare className="w-3.5 h-3.5" />
               <span>3. WA Report</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('weekly')}
+              className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer shrink-0 ${
+                activeTab === 'weekly'
+                  ? 'bg-amber-500 text-slate-950 shadow-xs border border-amber-600'
+                  : 'text-slate-600 hover:bg-slate-200/70 hover:text-slate-900'
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              <span>4. Weekly Report</span>
             </button>
           </div>
 

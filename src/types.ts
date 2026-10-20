@@ -118,3 +118,170 @@ export interface AppNotification {
   type: 'success' | 'error' | 'info' | 'warning';
   message: string;
 }
+
+// =========================================================================
+// WEEKLY MAINTENANCE REPORT TYPES (A4 7-Page Executive Report)
+// =========================================================================
+
+export interface WeeklyHighlightItem {
+  id: string;
+  no: number;
+  text: string;
+  sourceDate?: string;
+  clientDepartment?: string;
+  clientName?: string;
+  pic?: string;
+  status?: string;
+}
+
+export interface NextMonthProjectItem {
+  id: string;
+  no: number;
+  projectName: string;
+  target: string;
+  others: string;
+}
+
+export interface TrainingItem {
+  id: string;
+  no: number;
+  date: string;
+  dept: string;
+  topicAndParticipant: string;
+  documentationUrl?: string;
+}
+
+export interface BanquetSupportItem {
+  id: string;
+  no: number;
+  date: string;
+  eventName: string;
+  location: string;
+  requirementSupport: string;
+}
+
+export interface DatabaseBackupRow {
+  day: string; // e.g. "Monday"
+  date: string; // e.g. "10/12/2026"
+  time: string; // e.g. "05.00"
+  databaseLocation: string; // e.g. "Backup PC Server"
+  status: 'Done' | 'Pending' | 'Failed' | 'In Progress';
+}
+
+export interface AccessPointItem {
+  type: string;
+  total: number;
+}
+
+export interface AccessPointZoneGroup {
+  zone: string;
+  items: AccessPointItem[];
+  totalAp: number;
+  issue: string;
+}
+
+export interface WeeklyReport {
+  id: string; // e.g. "2026-W42" or "2026-10-W2"
+  year: number;
+  month: number;
+  weekNumber: number;
+  weekLabel: string; // e.g. "Week II – October"
+  startDate: string; // "2026-10-12"
+  endDate: string; // "2026-10-18"
+  dateRangeFormatted: string; // "12 October 2026 – 18 October 2026"
+
+  // Header & Metadata
+  propertyName: string;
+  prepared: string;
+  directReport: string;
+  cc: string;
+  reportPeriodText: string;
+
+  // 1. Guest Statistic
+  guestStatistic: {
+    mrtgScreenshotUrl?: string;
+    bandwidth: string;
+    freeBod: string;
+    ispStatus: string;
+    connectedDevicesCount: string;
+  };
+
+  // 2. Weekly Highlight
+  weeklyHighlights: WeeklyHighlightItem[];
+
+  // 3. Weekly Antivirus Report Screenshots
+  antivirusReport: {
+    statusOverviewUrl?: string;
+    securityOverviewUrl?: string;
+    computerStatusUrl?: string;
+    antivirusDetectionUrl?: string;
+    firewallDetectionsUrl?: string;
+    fortigateStatusUrl?: string;
+  };
+
+  // 4. Next Month Project & On Going
+  nextMonthProjects: NextMonthProjectItem[];
+
+  // 5. Training Time & Train the Trainer
+  trainings: TrainingItem[];
+
+  // 6. Weekly Banquet Support Event Internet BOD
+  banquetSupports: BanquetSupportItem[];
+
+  // 7. Daily Activity Report Link
+  dailyActivityGdriveLink: string;
+
+  // 8. Weekly Monitoring Access Point
+  accessPointMonitoring: {
+    floor711: AccessPointZoneGroup;
+    floor1217: AccessPointZoneGroup;
+    meetingAndPublic: AccessPointZoneGroup;
+    totalSummary: {
+      items: AccessPointItem[];
+      totalAp: number;
+    };
+  };
+
+  // 9. Backup Database
+  databaseBackups: DatabaseBackupRow[];
+  databaseBackupLinks: {
+    databaseLink: string;
+    dataCenterLink: string;
+    userDataLink: string;
+    accountEmail: string;
+  };
+
+  // 10. New Employee Data System (HR Request)
+  newEmployeeSystem: {
+    details: string;
+    fileLink: string;
+    noteTitle: string;
+  };
+
+  // 11. New Menu on POS Request (This Week)
+  newMenuPos: {
+    details: string;
+    fileLink: string;
+    noteTitle: string;
+  };
+
+  // 12. Sara System Report IT Section
+  saraSystemReport: {
+    screenshotUrl?: string;
+    note: string;
+  };
+
+  // 13. Others Information
+  othersInformation: string;
+
+  // Sign-off
+  signatureCityDate: string;
+  signatureName: string;
+  signatureTitle: string;
+  footerText: string;
+
+  isUserModified?: boolean;
+  createdAt: number;
+  updatedAt: number;
+  expiresAt: number;
+}

@@ -4,7 +4,8 @@ import {
   DailyChecklistReport,
   TeamMember,
   ClientUser,
-  ServerThresholdSettings
+  ServerThresholdSettings,
+  WeeklyReport
 } from './types';
 import {
   createDefaultActivityReport,
@@ -13,6 +14,7 @@ import {
   isChecklistCustomModified,
   isActivityCustomModified
 } from './data/defaults';
+import { createDefaultWeeklyReport, getWeekRangeFromDate } from './data/weeklyDefaults';
 import {
   loadTeamMembers,
   saveTeamMembersToStorage,
@@ -59,6 +61,9 @@ import {
   subscribeToClientUsers,
   subscribeToAppLogo,
   syncPendingLocalReportsToCloud,
+  saveWeeklyReport,
+  loadWeeklyReport,
+  subscribeToWeeklyReport,
   DbConnectionResult
 } from './services/firebase';
 import { DatabaseStatusModal } from './components/DatabaseStatusModal';
@@ -70,12 +75,15 @@ import { DailyActivityPrintView } from './components/DailyActivityPrintView';
 import { DailyChecklistForm } from './components/DailyChecklistForm';
 import { DailyChecklistPrintView } from './components/DailyChecklistPrintView';
 import { WaReportView } from './components/WaReportView';
+import { WeeklyReportForm } from './components/WeeklyReportForm';
+import { WeeklyReportPrintView } from './components/WeeklyReportPrintView';
 import { HistoryModal } from './components/HistoryModal';
 import { TeamManagementModal } from './components/TeamManagementModal';
 import { UserManagementModal } from './components/UserManagementModal';
 import { LogoManagerModal } from './components/LogoManagerModal';
 import { QuotaMonitorModal } from './components/QuotaMonitorModal';
 import { ServerThresholdModal } from './components/ServerThresholdModal';
+import { DownloadActivityWarningModal, IncompleteActivityItem } from './components/DownloadActivityWarningModal';
 import {
   Download,
   CheckCircle,
@@ -88,7 +96,7 @@ import {
 
 export default function App() {
   const [selectedDate, setSelectedDate] = useState<string>(getTodayDateString());
-  const [activeTab, setActiveTab] = useState<'activity' | 'checklist' | 'wareport'>('activity');
+  const [activeTab, setActiveTab] = useState<'activity' | 'checklist' | 'wareport' | 'weekly'>('activity');
   const [viewMode, setViewMode] = useState<'edit' | 'preview'>('edit');
 
   // Custom Logo state (cached locally and synced with Cloud Firestore)
@@ -116,6 +124,9 @@ export default function App() {
   const [checklistReport, setChecklistReport] = useState<DailyChecklistReport>(() =>
     createDefaultChecklistReport(getTodayDateString())
   );
+  const [weeklyReport, setWeeklyReport] = useState<WeeklyReport>(() =>
+    createDefaultWeeklyReport(getTodayDateString())
+  );
 
   const [isDbOnline, setIsDbOnline] = useState<boolean>(true);
   const [dbConnectionResult, setDbConnectionResult] = useState<DbConnectionResult | null>(null);
@@ -129,17 +140,43 @@ export default function App() {
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
   const [notification, setNotification] = useState<string | null>(null);
 
+  // Incomplete Activity warning modal state before PDF download or print
+  const [isActivityWarningModalOpen, setIsActivityWarningModalOpen] = useState<boolean>(false);
+  const [activityWarningItems, setActivityWarningItems] = useState<IncompleteActivityItem[]>([]);
+  const [pendingWarningAction, setPendingWarningAction] = useState<'download' | 'print'>('download');
+
   // References for PDF rendering (mounted in always-visible off-screen portal)
   const actPage1Ref = useRef<HTMLDivElement | null>(null);
   const actPage2Ref = useRef<HTMLDivElement | null>(null);
   const checklistPageRef = useRef<HTMLDivElement | null>(null);
 
+  // References for Weekly Report 7 A4 pages
+  const weeklyPage1Ref = useRef<HTMLDivElement | null>(null);
+  const weeklyPage2Ref = useRef<HTMLDivElement | null>(null);
+  const weeklyPage3Ref = useRef<HTMLDivElement | null>(null);
+  const weeklyPage4Ref = useRef<HTMLDivElement | null>(null);
+  const weeklyPage5Ref = useRef<HTMLDivElement | null>(null);
+  const weeklyPage6Ref = useRef<HTMLDivElement | null>(null);
+  const weeklyPage7Ref = useRef<HTMLDivElement | null>(null);
+  const weeklyPageRefs = [
+    weeklyPage1Ref,
+    weeklyPage2Ref,
+    weeklyPage3Ref,
+    weeklyPage4Ref,
+    weeklyPage5Ref,
+    weeklyPage6Ref,
+    weeklyPage7Ref,
+  ];
+
   // Auto-save refs to track saved state and debounce keystrokes
   const lastSavedActRef = useRef<string>('');
   const lastSavedCheckRef = useRef<string>('');
+  const lastSavedWeeklyRef = useRef<string>('');
   const isDateLoadedRef = useRef<string>('');
   const actDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const checkDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const weeklyDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const latestWeeklyRef = useRef<WeeklyReport>(weeklyReport);
 
   // Keep latest reports in refs for instant flush on date switch
   const latestActRef = useRef<DailyActivityReport>(activityReport);
@@ -997,6 +1034,20 @@ export default function App() {
         setActivityReport(finalAct);
         setChecklistReport(finalCheck);
 
+        // Load Weekly Report for the selected week
+        const weekInfo = getWeekRangeFromDate(selectedDate);
+        const weekId = `weekly-${weekInfo.startDate}`;
+        let loadedWeek: WeeklyReport | null = null;
+        try {
+          loadedWeek = await loadWeeklyReport(weekId);
+        } catch (e) {
+          console.warn('Failed to load weekly report:', e);
+        }
+        const finalWeek = loadedWeek || createDefaultWeeklyReport(selectedDate);
+        latestWeeklyRef.current = finalWeek;
+        lastSavedWeeklyRef.current = JSON.stringify(finalWeek);
+        setWeeklyReport(finalWeek);
+
         // Snapshot initial activity report in localStorage (with updatedAt: 0 so it never overrides cloud data)
         if (shouldSnapshotActivity) {
           saveActivityReportLocalImmediate(finalAct);
@@ -1209,6 +1260,24 @@ export default function App() {
     });
   };
 
+  const handleWeeklyReportChange = (updated: WeeklyReport) => {
+    latestWeeklyRef.current = updated;
+    setWeeklyReport(updated);
+
+    if (weeklyDebounceTimerRef.current) {
+      clearTimeout(weeklyDebounceTimerRef.current);
+    }
+    weeklyDebounceTimerRef.current = setTimeout(async () => {
+      weeklyDebounceTimerRef.current = null;
+      try {
+        saveWeeklyReport(updated);
+        lastSavedWeeklyRef.current = JSON.stringify(updated);
+      } catch (err) {
+        console.warn('Auto save weekly failed:', err);
+      }
+    }, 400);
+  };
+
   // Instant Manual Save trigger (if user clicks Simpan button)
   const handleSave = async () => {
     if (actDebounceTimerRef.current) {
@@ -1218,6 +1287,10 @@ export default function App() {
     if (checkDebounceTimerRef.current) {
       clearTimeout(checkDebounceTimerRef.current);
       checkDebounceTimerRef.current = null;
+    }
+    if (weeklyDebounceTimerRef.current) {
+      clearTimeout(weeklyDebounceTimerRef.current);
+      weeklyDebounceTimerRef.current = null;
     }
 
     setIsSaving(true);
@@ -1242,22 +1315,32 @@ export default function App() {
       setChecklistReport(checkToSave);
       saveChecklistReportLocalImmediate(checkToSave);
 
-      const [actRes, checkRes] = await Promise.all([
+      const weekToSave: WeeklyReport = {
+        ...latestWeeklyRef.current,
+        isUserModified: true,
+        updatedAt: Date.now(),
+      };
+      latestWeeklyRef.current = weekToSave;
+      setWeeklyReport(weekToSave);
+
+      const [actRes, checkRes, weekRes] = await Promise.all([
         saveActivityReport(actToSave),
         saveChecklistReport(checkToSave),
+        saveWeeklyReport(weekToSave),
       ]);
 
       lastSavedActRef.current = JSON.stringify(actToSave);
       lastSavedCheckRef.current = JSON.stringify(checkToSave);
+      lastSavedWeeklyRef.current = JSON.stringify(weekToSave);
 
-      const isFallback = actRes.isLocalFallback || checkRes.isLocalFallback;
+      const isFallback = actRes.isLocalFallback || checkRes.isLocalFallback || weekRes.isLocalFallback;
       setSaveStatusText(
         isFallback
           ? '✓ Tersimpan di Cadangan Lokal (Offline)'
           : '✓ Tersimpan otomatis ke Cloud'
       );
       setIsDbOnline(!isFallback);
-      setNotification('✓ Data laporan Activity, Checklist & WA Report berhasil disimpan!');
+      setNotification('✓ Data laporan Activity, Checklist, WA & Weekly Report berhasil disimpan!');
       setTimeout(() => setNotification(null), 3000);
     } catch (err) {
       console.error(err);
@@ -1267,8 +1350,41 @@ export default function App() {
     }
   };
 
+  // Validation for Incomplete Activities before Download / Print
+  const checkIncompleteActivities = (): IncompleteActivityItem[] => {
+    if (activeTab !== 'activity') return [];
+    const items: IncompleteActivityItem[] = [];
+    const acts = activityReport.logBookActivities || [];
+
+    acts.forEach((act, index) => {
+      const hasPhoto = Boolean(act.pictureUrl?.trim());
+      const hasDetails = Boolean(act.details?.trim());
+      const no = act.no || (index + 1);
+
+      if (hasPhoto && !hasDetails) {
+        items.push({
+          index,
+          no,
+          details: '',
+          pictureUrl: act.pictureUrl,
+          issueType: 'photo_without_details',
+        });
+      } else if (hasDetails && !hasPhoto) {
+        items.push({
+          index,
+          no,
+          details: act.details,
+          pictureUrl: '',
+          issueType: 'details_without_photo',
+        });
+      }
+    });
+
+    return items;
+  };
+
   // Direct A4 PDF download using html2canvas-pro & jsPDF
-  const handleDownloadPdf = async () => {
+  const executeDownloadPdf = async () => {
     setIsGeneratingPdf(true);
     setPdfProgress({ progress: 10, text: 'Mempersiapkan dokumen A4...' });
 
@@ -1305,6 +1421,17 @@ export default function App() {
         await exportElementsToA4Pdf([pCheck], filename, (prog, text) => {
           setPdfProgress({ progress: prog, text });
         });
+      } else if (activeTab === 'weekly') {
+        const pages = weeklyPageRefs.map((r) => r.current).filter(Boolean) as HTMLDivElement[];
+        if (pages.length === 0) {
+          throw new Error('Halaman Weekly Report belum siap dirender.');
+        }
+
+        const cleanPeriod = weeklyReport.weekLabel.replace(/[^a-zA-Z0-9_-]/g, ' ');
+        const filename = `Weekly Maintenance Report ${cleanPeriod} (${weeklyReport.startDate} to ${weeklyReport.endDate}).pdf`;
+        await exportElementsToA4Pdf(pages, filename, (prog, text) => {
+          setPdfProgress({ progress: prog, text });
+        });
       } else {
         const waEl = document.getElementById('wa-report-card');
         if (!waEl) {
@@ -1329,8 +1456,56 @@ export default function App() {
     }
   };
 
-  const handlePrint = () => {
+  const handleDownloadPdf = () => {
+    const issues = checkIncompleteActivities();
+    if (issues.length > 0) {
+      setActivityWarningItems(issues);
+      setPendingWarningAction('download');
+      setIsActivityWarningModalOpen(true);
+      return;
+    }
+    executeDownloadPdf();
+  };
+
+  const executePrint = () => {
     triggerNativePrint();
+  };
+
+  const handlePrint = () => {
+    const issues = checkIncompleteActivities();
+    if (issues.length > 0) {
+      setActivityWarningItems(issues);
+      setPendingWarningAction('print');
+      setIsActivityWarningModalOpen(true);
+      return;
+    }
+    executePrint();
+  };
+
+  const handleJumpToActivityFromWarning = (index: number) => {
+    setIsActivityWarningModalOpen(false);
+    if (viewMode !== 'edit') {
+      setViewMode('edit');
+    }
+    setTimeout(() => {
+      const card = document.getElementById(`activity-card-${index}`);
+      if (card) {
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const textarea = card.querySelector('textarea');
+        if (textarea) {
+          textarea.focus();
+        }
+      }
+    }, 250);
+  };
+
+  const handleConfirmWarningAction = () => {
+    setIsActivityWarningModalOpen(false);
+    if (pendingWarningAction === 'print') {
+      executePrint();
+    } else {
+      executeDownloadPdf();
+    }
   };
 
   const handleCleanupStorage = async () => {
@@ -1448,7 +1623,7 @@ export default function App() {
                 thresholds={thresholds}
                 onOpenThresholdModal={() => setIsThresholdModalOpen(true)}
               />
-            ) : (
+            ) : activeTab === 'checklist' ? (
               <DailyChecklistForm
                 report={checklistReport}
                 onChange={handleChecklistChange}
@@ -1460,6 +1635,13 @@ export default function App() {
                 onOpenLogoModal={() => setIsLogoModalOpen(true)}
                 onSyncFromPreviousDate={handleSyncFromPreviousDate}
               />
+            ) : (
+              <WeeklyReportForm
+                report={weeklyReport}
+                onChange={handleWeeklyReportChange}
+                onSave={handleSave}
+                isSaving={isSaving}
+              />
             )}
           </div>
         ) : (
@@ -1469,7 +1651,7 @@ export default function App() {
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-pulse shrink-0"></span>
                 <span className="text-xs font-bold text-slate-900">
-                  Mode Pratinjau Dokumen A4 ({activeTab === 'activity' ? 'Daily Activity' : 'Daily Checklist'})
+                  Mode Pratinjau Dokumen A4 ({activeTab === 'activity' ? 'Daily Activity' : activeTab === 'checklist' ? 'Daily Checklist' : 'Weekly Maintenance Report'})
                 </span>
                 <span className="text-[11px] text-slate-500 hidden sm:inline">
                   · Sesuai format cetak &amp; unduhan PDF resmi
@@ -1514,9 +1696,14 @@ export default function App() {
                   customLogoUrl={customLogoUrl}
                   thresholds={thresholds}
                 />
-              ) : (
+              ) : activeTab === 'checklist' ? (
                 <DailyChecklistPrintView
                   report={checklistReport}
+                  customLogoUrl={customLogoUrl}
+                />
+              ) : (
+                <WeeklyReportPrintView
+                  report={weeklyReport}
                   customLogoUrl={customLogoUrl}
                 />
               )}
@@ -1554,6 +1741,11 @@ export default function App() {
             pageRef={checklistPageRef}
             customLogoUrl={customLogoUrl}
           />
+          <WeeklyReportPrintView
+            report={weeklyReport}
+            pageRefs={weeklyPageRefs}
+            customLogoUrl={customLogoUrl}
+          />
         </div>
 
         {/* ========================================================================= */}
@@ -1566,9 +1758,14 @@ export default function App() {
               customLogoUrl={customLogoUrl}
               thresholds={thresholds}
             />
-          ) : (
+          ) : activeTab === 'checklist' ? (
             <DailyChecklistPrintView
               report={checklistReport}
+              customLogoUrl={customLogoUrl}
+            />
+          ) : (
+            <WeeklyReportPrintView
+              report={weeklyReport}
               customLogoUrl={customLogoUrl}
             />
           )}
@@ -1662,6 +1859,16 @@ export default function App() {
         onClose={() => setIsThresholdModalOpen(false)}
         thresholds={thresholds}
         onSaveThresholds={handleSaveThresholds}
+      />
+
+      {/* Warning Modal Before Download / Print if Activities are Incomplete */}
+      <DownloadActivityWarningModal
+        isOpen={isActivityWarningModalOpen}
+        onClose={() => setIsActivityWarningModalOpen(false)}
+        onConfirm={handleConfirmWarningAction}
+        onJumpToActivity={handleJumpToActivityFromWarning}
+        isPrintAction={pendingWarningAction === 'print'}
+        incompleteItems={activityWarningItems}
       />
     </div>
   );

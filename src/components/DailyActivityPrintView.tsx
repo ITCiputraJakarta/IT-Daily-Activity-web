@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { DailyActivityReport, ServerThresholdSettings } from '../types';
 import { CiputraLogo } from './CiputraLogo';
 
@@ -17,6 +17,14 @@ export const DailyActivityPrintView: React.FC<Props> = ({
   customLogoUrl,
   thresholds,
 }) => {
+  // Only include activities with non-empty Activities Details.
+  // Re-number sequentially starting from 1 (e.g. if item 1 is empty, item 2 becomes No. 1)
+  const validActivities = useMemo(() => {
+    return (report.logBookActivities || []).filter(
+      (act) => Boolean(act && typeof act.details === 'string' && act.details.trim() !== '')
+    );
+  }, [report.logBookActivities]);
+
   const formatCleanTemp = (val?: string) => {
     if (!val || !val.trim()) return '-';
     const m = val.match(/[\d.]+/);
@@ -111,62 +119,70 @@ export const DailyActivityPrintView: React.FC<Props> = ({
               </tr>
             </thead>
             <tbody>
-              {report.logBookActivities.map((act, index) => (
-                <React.Fragment key={act.id || index}>
-                  {/* Row Description */}
-                  <tr className="border-b border-slate-200 bg-slate-50/60 hover:bg-slate-50">
-                    <td className="border-r border-slate-200 p-1.5 text-center font-bold text-slate-700 align-top">
-                      {index + 1}.
-                    </td>
-                    <td className="border-r border-slate-200 p-1.5 text-left align-top whitespace-pre-line font-bold text-slate-900">
-                      {act.details || '-'}
-                    </td>
-                    <td className="border-r border-slate-200 p-1.5 text-center align-middle font-semibold text-slate-700">
-                      {act.clientName ? (
-                        <div className="font-bold text-slate-900 text-[11px] leading-tight mb-0.5">
-                          {act.clientName}
-                        </div>
-                      ) : null}
-                      <span className="px-1.5 py-0.5 rounded bg-slate-200/90 text-[9.5px] inline-block font-semibold text-slate-800">
-                        {act.clientDepartment || act.userClient || 'IT'}
-                      </span>
-                    </td>
-                    <td className="border-r border-slate-200 p-1.5 text-center align-middle">
-                      <span className="inline-block px-2 py-0.5 rounded-full text-[9.5px] font-extrabold bg-emerald-100 text-emerald-900 border border-emerald-300">
-                        {act.status}
-                      </span>
-                    </td>
-                    <td className="p-1.5 text-center align-middle font-bold uppercase text-slate-800">
-                      <span className="inline-block px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px] font-bold text-slate-900">
-                        {act.pic}
-                      </span>
-                    </td>
-                  </tr>
+              {validActivities.length > 0 ? (
+                validActivities.map((act, index) => (
+                  <React.Fragment key={act.id || index}>
+                    {/* Row Description */}
+                    <tr className="border-b border-slate-200 bg-slate-50/60 hover:bg-slate-50">
+                      <td className="border-r border-slate-200 p-1.5 text-center font-bold text-slate-700 align-top">
+                        {index + 1}.
+                      </td>
+                      <td className="border-r border-slate-200 p-1.5 text-left align-top whitespace-pre-line font-bold text-slate-900">
+                        {act.details}
+                      </td>
+                      <td className="border-r border-slate-200 p-1.5 text-center align-middle font-semibold text-slate-700">
+                        {act.clientName ? (
+                          <div className="font-bold text-slate-900 text-[11px] leading-tight mb-0.5">
+                            {act.clientName}
+                          </div>
+                        ) : null}
+                        <span className="px-1.5 py-0.5 rounded bg-slate-200/90 text-[9.5px] inline-block font-semibold text-slate-800">
+                          {act.clientDepartment || act.userClient || 'IT'}
+                        </span>
+                      </td>
+                      <td className="border-r border-slate-200 p-1.5 text-center align-middle">
+                        <span className="inline-block px-2 py-0.5 rounded-full text-[9.5px] font-extrabold bg-emerald-100 text-emerald-900 border border-emerald-300">
+                          {act.status}
+                        </span>
+                      </td>
+                      <td className="p-1.5 text-center align-middle font-bold uppercase text-slate-800">
+                        <span className="inline-block px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px] font-bold text-slate-900">
+                          {act.pic}
+                        </span>
+                      </td>
+                    </tr>
 
-                  {/* Picture / Documentation Section */}
-                  <tr className="border-b border-slate-300 bg-white">
-                    <td colSpan={5} className="p-2 pl-3">
-                      <div className="text-[10px] font-bold text-slate-600 mb-1 flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
-                        Picture or Documentation:
-                      </div>
-                      {act.pictureUrl ? (
-                        <div className="flex justify-center items-center py-1 bg-slate-50/50 rounded border border-slate-100">
-                          <img
-                            src={act.pictureUrl}
-                            alt={`Doc ${index + 1}`}
-                            className="max-h-28 max-w-[260px] object-contain rounded-md border border-slate-200 shadow-xs"
-                          />
+                    {/* Picture / Documentation Section */}
+                    <tr className="border-b border-slate-300 bg-white">
+                      <td colSpan={5} className="p-2 pl-3">
+                        <div className="text-[10px] font-bold text-slate-600 mb-1 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+                          Picture or Documentation:
                         </div>
-                      ) : (
-                        <div className="h-6 flex items-center text-[10px] text-slate-400 italic">
-                          - Tidak ada dokumentasi foto terlampir -
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                </React.Fragment>
-              ))}
+                        {act.pictureUrl ? (
+                          <div className="flex justify-center items-center py-1 bg-slate-50/50 rounded border border-slate-100">
+                            <img
+                              src={act.pictureUrl}
+                              alt={`Doc ${index + 1}`}
+                              className="max-h-28 max-w-[260px] object-contain rounded-md border border-slate-200 shadow-xs"
+                            />
+                          </div>
+                        ) : (
+                          <div className="h-6 flex items-center text-[10px] text-slate-400 italic">
+                            - Tidak ada dokumentasi foto terlampir -
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  </React.Fragment>
+                ))
+              ) : (
+                <tr className="border-b border-slate-300 bg-white">
+                  <td colSpan={5} className="py-8 px-4 text-center text-slate-400 italic font-medium">
+                    - Tidak ada aktivitas IT Log Book yang dicatat pada tanggal ini -
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

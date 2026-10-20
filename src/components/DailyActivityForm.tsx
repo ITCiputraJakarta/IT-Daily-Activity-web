@@ -974,6 +974,16 @@ export const DailyActivityForm: React.FC<Props> = ({
                 </div>
               </div>
 
+              {/* Warning if photo attached but Activities Details is empty */}
+              {Boolean(act.pictureUrl?.trim() && !act.details?.trim()) && (
+                <div className="mb-3 p-2.5 bg-amber-50 border border-amber-300 rounded-lg text-amber-950 text-xs font-semibold flex items-start gap-2 shadow-2xs animate-in fade-in">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="leading-snug">
+                    <span className="font-bold text-amber-900">Perhatian:</span> Foto dokumentasi telah dilampirkan, tetapi kolom <strong className="underline">Activities Details (Deskripsi Kasus / Pekerjaan)</strong> masih kosong. Baris ini tidak akan muncul pada Preview A4 atau file download PDF sebelum deskripsi diisi.
+                  </div>
+                </div>
+              )}
+
               {/* Form inputs responsive grid (Separated Client Name, Department, and IT PIC) */}
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 mb-3">
                 {/* Details */}

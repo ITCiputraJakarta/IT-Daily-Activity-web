@@ -17,7 +17,7 @@ import {
   limit,
   onSnapshot
 } from 'firebase/firestore';
-import { DailyActivityReport, DailyChecklistReport, TeamMember, ClientUser, ServerThresholdSettings } from '../types';
+import { DailyActivityReport, DailyChecklistReport, TeamMember, ClientUser, ServerThresholdSettings, WeeklyReport } from '../types';
 import {
   createChecklistFromPrevious,
   isChecklistCustomModified,
@@ -71,6 +71,7 @@ export const db = firestoreDb;
 
 export const COLLECTION_ACTIVITIES = 'daily_activities';
 export const COLLECTION_CHECKLISTS = 'daily_checklists';
+export const COLLECTION_WEEKLY = 'weekly_reports';
 
 export const TEN_MONTHS_MS = 300 * 24 * 60 * 60 * 1000; // 300 days (10 months) retention policy
 export const TWO_MONTHS_MS = TEN_MONTHS_MS; // backwards compatibility alias
@@ -79,6 +80,7 @@ export const THIRTY_DAYS_MS = TEN_MONTHS_MS; // backwards compatibility alias
 // LocalStorage keys for fallback/offline
 const LS_PREFIX_ACTIVITY = 'hcj_it_activity_';
 const LS_PREFIX_CHECKLIST = 'hcj_it_checklist_';
+const LS_PREFIX_WEEKLY = 'hcj_it_weekly_';
 
 export interface DbConnectionResult {
   isOnline: boolean;
@@ -551,6 +553,123 @@ export async function loadChecklistReport(dateStr: string): Promise<DailyCheckli
 
   return null;
 }
+
+/**
+ * Save Weekly Report to Firestore & LocalStorage
+ */
+export async function saveWeeklyReport(report: WeeklyReport): Promise<{ success: boolean; isLocalFallback?: boolean }> {
+  if (!report || !report.id) {
+    return { success: false, isLocalFallback: true };
+  }
+  const now = Date.now();
+  const cleanedReport: WeeklyReport = sanitizeForFirestore({
+    ...report,
+    propertyName: report.propertyName || 'Hotel Ciputra Jakarta',
+    isUserModified: true,
+    updatedAt: now,
+    createdAt: report.createdAt || now,
+    expiresAt: report.expiresAt || (now + TEN_MONTHS_MS),
+  });
+
+  safeSetLocalStorage(LS_PREFIX_WEEKLY + report.id, JSON.stringify(cleanedReport));
+
+  if (!db) {
+    return { success: true, isLocalFallback: true };
+  }
+
+  try {
+    const docRef = doc(db, COLLECTION_WEEKLY, report.id);
+    await setDoc(docRef, cleanedReport);
+    recordFirebaseWrite(1, 'Simpan Weekly Report');
+    return { success: true };
+  } catch (error) {
+    console.error('Firestore saveWeeklyReport error, using local fallback:', error);
+    return { success: true, isLocalFallback: true };
+  }
+}
+
+/**
+ * Load Weekly Report by week ID (e.g. "weekly-2026-10-12")
+ */
+export async function loadWeeklyReport(weekId: string): Promise<WeeklyReport | null> {
+  if (!weekId) return null;
+  let cloudReport: WeeklyReport | null = null;
+  let localReport: WeeklyReport | null = null;
+
+  const local = localStorage.getItem(LS_PREFIX_WEEKLY + weekId);
+  if (local) {
+    try {
+      localReport = JSON.parse(local) as WeeklyReport;
+    } catch {
+      localReport = null;
+    }
+  }
+
+  if (db) {
+    try {
+      const docRef = doc(db, COLLECTION_WEEKLY, weekId);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        cloudReport = snap.data() as WeeklyReport;
+        recordFirebaseRead(1, 'Baca Weekly Report');
+      }
+    } catch (error) {
+      console.warn('Firestore loadWeeklyReport failed, checking local storage:', error);
+    }
+  }
+
+  if (cloudReport && localReport) {
+    if ((localReport.updatedAt || 0) >= (cloudReport.updatedAt || 0)) {
+      safeSetLocalStorage(LS_PREFIX_WEEKLY + weekId, JSON.stringify(localReport));
+      return localReport;
+    } else {
+      safeSetLocalStorage(LS_PREFIX_WEEKLY + weekId, JSON.stringify(cloudReport));
+      return cloudReport;
+    }
+  }
+
+  if (cloudReport) {
+    safeSetLocalStorage(LS_PREFIX_WEEKLY + weekId, JSON.stringify(cloudReport));
+    return cloudReport;
+  }
+
+  if (localReport) {
+    return localReport;
+  }
+
+  return null;
+}
+
+/**
+ * Realtime subscription to Weekly Report
+ */
+export function subscribeToWeeklyReport(
+  weekId: string,
+  callback: (report: WeeklyReport | null) => void
+): () => void {
+  if (!db || !weekId) {
+    return () => {};
+  }
+  try {
+    const docRef = doc(db, COLLECTION_WEEKLY, weekId);
+    return onSnapshot(
+      docRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          callback(docSnap.data() as WeeklyReport);
+        } else {
+          callback(null);
+        }
+      },
+      (err) => {
+        console.warn('subscribeToWeeklyReport error:', err);
+      }
+    );
+  } catch {
+    return () => {};
+  }
+}
+
 
 /**
  * Finds the most recent saved DailyChecklistReport prior to `targetDate` (date < targetDate).
