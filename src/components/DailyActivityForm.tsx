@@ -9,6 +9,7 @@ import {
   Trash2,
   Upload,
   Camera,
+  Clipboard,
   Image as ImageIcon,
   CheckCircle2,
   Calendar,
@@ -492,6 +493,63 @@ export const DailyActivityForm: React.FC<Props> = ({
     }
   };
 
+  // Process image file or paste blob into activity item
+  const processImageForActivity = async (file: File, index: number) => {
+    if (!file.type.startsWith('image/')) return;
+    try {
+      const compressed = await compressImage(file, 1600, 1600, 0.82);
+      handleLogBookImageChange(index, compressed);
+    } catch (err) {
+      console.error('Failed to compress activity image:', err);
+    }
+  };
+
+  // Paste handler for Activity Card (captures Ctrl+V from Snipping Tool)
+  const handleActivityCardPaste = async (
+    e: React.ClipboardEvent<HTMLDivElement>,
+    index: number
+  ) => {
+    const items = e.clipboardData?.items;
+    if (!items || items.length === 0) return;
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        e.stopPropagation();
+        const file = item.getAsFile();
+        if (file) {
+          await processImageForActivity(file, index);
+          return;
+        }
+      }
+    }
+  };
+
+  // Handle clicking "Paste dari Snipping Tool" button in Activity Card
+  const handlePasteClipboardForActivity = async (index: number) => {
+    if (navigator.clipboard && navigator.clipboard.read) {
+      try {
+        const clipboardItems = await navigator.clipboard.read();
+        for (const item of clipboardItems) {
+          for (const type of item.types) {
+            if (type.startsWith('image/')) {
+              const blob = await item.getType(type);
+              const file = new File([blob], `activity-paste-${index + 1}.png`, { type });
+              await processImageForActivity(file, index);
+              return;
+            }
+          }
+        }
+        alert('Tidak ditemukan gambar di clipboard. Silakan gunakan Snipping Tool untuk copy screenshot lalu klik tombol ini lagi.');
+      } catch (err) {
+        alert('Akses clipboard dibatasi browser. Silakan klik kartu aktivitas ini lalu tekan Ctrl + V di keyboard untuk menempelkan gambar dari Snipping Tool.');
+      }
+    } else {
+      alert('Silakan klik kartu aktivitas ini lalu tekan Ctrl + V di keyboard untuk menempelkan gambar.');
+    }
+  };
+
   // Sync traffic to Checklist item #2 when user changes IN traffic
   const handleTrafficInChange = (field: 'maxIn' | 'avgIn' | 'currentIn', value: string) => {
     const cur = latestReportRef.current;
@@ -915,7 +973,9 @@ export const DailyActivityForm: React.FC<Props> = ({
             <div
               key={act.id || index}
               id={`activity-card-${index}`}
-              className={`border rounded-xl p-4 transition-all duration-300 shadow-2xs ${
+              tabIndex={0}
+              onPaste={(e) => handleActivityCardPaste(e, index)}
+              className={`border rounded-xl p-4 transition-all duration-300 shadow-2xs outline-hidden focus:ring-2 focus:ring-emerald-500/50 ${
                 index === highlightedIndex
                   ? 'border-emerald-500 bg-emerald-50/40 ring-4 ring-emerald-500/20 scale-[1.005]'
                   : 'border-slate-200 bg-white hover:border-slate-300'
@@ -1183,8 +1243,17 @@ export const DailyActivityForm: React.FC<Props> = ({
                         </p>
                       </div>
 
-                      {/* Change options: Camera or Gallery */}
+                      {/* Change options: Camera, Snipping Tool Paste, or Gallery */}
                       <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => handlePasteClipboardForActivity(index)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-lg text-xs transition shadow-2xs cursor-pointer"
+                          title="Paste screenshot baru dari Snipping Tool (Ctrl+V)"
+                        >
+                          <Clipboard className="w-3.5 h-3.5" />
+                          <span>Paste Snipping Tool</span>
+                        </button>
                         <button
                           type="button"
                           onClick={() => {
@@ -1221,7 +1290,27 @@ export const DailyActivityForm: React.FC<Props> = ({
                     </div>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    {/* Paste from Snipping Tool Button */}
+                    <button
+                      type="button"
+                      onClick={() => handlePasteClipboardForActivity(index)}
+                      className="flex items-center justify-center gap-2 p-3 rounded-xl border border-amber-300 bg-amber-50/80 hover:bg-amber-100/90 text-slate-900 transition font-bold text-xs shadow-2xs cursor-pointer"
+                      title="Paste screenshot langsung dari Windows Snipping Tool (atau klik kartu lalu tekan Ctrl+V)"
+                    >
+                      <div className="w-7 h-7 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center shrink-0">
+                        <Clipboard className="w-4 h-4" />
+                      </div>
+                      <div className="text-left">
+                        <span className="block font-bold text-xs text-slate-950">
+                          Paste Snipping Tool
+                        </span>
+                        <span className="block text-[10px] text-amber-900 font-medium">
+                          Bisa klik atau tekan Ctrl+V
+                        </span>
+                      </div>
+                    </button>
+
                     {/* Live Camera Button (Direct to Phone / Tablet Camera) */}
                     <button
                       type="button"
@@ -1233,10 +1322,10 @@ export const DailyActivityForm: React.FC<Props> = ({
                       </div>
                       <div className="text-left">
                         <span className="block font-bold text-xs text-slate-900">
-                          Buka Kamera (Foto Langsung)
+                          Buka Kamera
                         </span>
                         <span className="block text-[10px] text-emerald-700 font-medium">
-                          Live foto via kamera HP / Tablet
+                          Live foto via kamera HP
                         </span>
                       </div>
                     </button>
@@ -1252,10 +1341,10 @@ export const DailyActivityForm: React.FC<Props> = ({
                       </div>
                       <div className="text-left">
                         <span className="block font-bold text-xs text-slate-900">
-                          Pilih dari Galeri / File
+                          Pilih File
                         </span>
                         <span className="block text-[10px] text-slate-500 font-normal">
-                          Upload file foto yang tersimpan
+                          Upload file foto galeri
                         </span>
                       </div>
                     </button>

@@ -460,7 +460,7 @@ export const WeeklyReportPrintView: React.FC<Props> = ({
                     </div>
                   </td>
                   <td className="border-r border-slate-900 p-1 font-bold align-middle text-xs">
-                    Total {report.accessPointMonitoring?.floor711?.totalAp || 178} AP
+                    Total {report.accessPointMonitoring?.floor711?.totalAp ?? (report.accessPointMonitoring?.floor711?.items || []).reduce((acc, it) => acc + (Number(it.total) || 0), 0)} AP
                   </td>
                   <td className="p-1 font-semibold align-middle text-emerald-800">
                     {report.accessPointMonitoring?.floor711?.issue || 'No Issue'}
@@ -481,7 +481,7 @@ export const WeeklyReportPrintView: React.FC<Props> = ({
                     </div>
                   </td>
                   <td className="border-r border-slate-900 p-1 font-bold align-middle text-xs">
-                    Total {report.accessPointMonitoring?.floor1217?.totalAp || 190} AP
+                    Total {report.accessPointMonitoring?.floor1217?.totalAp ?? (report.accessPointMonitoring?.floor1217?.items || []).reduce((acc, it) => acc + (Number(it.total) || 0), 0)} AP
                   </td>
                   <td className="p-1 font-semibold align-middle text-emerald-800">
                     {report.accessPointMonitoring?.floor1217?.issue || 'No Issue'}
@@ -504,7 +504,7 @@ export const WeeklyReportPrintView: React.FC<Props> = ({
                     </div>
                   </td>
                   <td className="border-r border-slate-900 p-1 font-bold align-middle text-xs">
-                    Total {report.accessPointMonitoring?.meetingAndPublic?.totalAp || 35} AP
+                    Total {report.accessPointMonitoring?.meetingAndPublic?.totalAp ?? (report.accessPointMonitoring?.meetingAndPublic?.items || []).reduce((acc, it) => acc + (Number(it.total) || 0), 0)} AP
                   </td>
                   <td className="p-1 font-semibold align-middle text-emerald-800">
                     {report.accessPointMonitoring?.meetingAndPublic?.issue || 'No Issue'}
@@ -545,7 +545,9 @@ export const WeeklyReportPrintView: React.FC<Props> = ({
                   </td>
                   <td className="border-r border-slate-900 p-1.5 text-left">
                     <div className="grid grid-cols-[1fr_40px] text-[10px]">
-                      {report.accessPointMonitoring?.totalSummary?.items.map((it, i) => (
+                      {(
+                        report.accessPointMonitoring?.totalSummary?.items || []
+                      ).map((it, i) => (
                         <React.Fragment key={i}>
                           <span className="font-semibold">{it.type}</span>
                           <span className="text-right font-bold pr-2">{it.total}</span>
@@ -554,7 +556,11 @@ export const WeeklyReportPrintView: React.FC<Props> = ({
                     </div>
                   </td>
                   <td className="border-r border-slate-900 p-1 font-black text-sm align-middle text-slate-950">
-                    {report.accessPointMonitoring?.totalSummary?.totalAp || 403}
+                    {report.accessPointMonitoring?.totalSummary?.totalAp ?? (
+                      (report.accessPointMonitoring?.floor711?.totalAp || 0) +
+                      (report.accessPointMonitoring?.floor1217?.totalAp || 0) +
+                      (report.accessPointMonitoring?.meetingAndPublic?.totalAp || 0)
+                    )}
                   </td>
                   <td className="p-1 font-semibold align-middle text-emerald-800">
                     Good &amp; Operational
