@@ -32,7 +32,8 @@ import {
   FileImage,
   Sun,
   Moon,
-  AlertTriangle
+  AlertTriangle,
+  Clipboard
 } from 'lucide-react';
 
 interface WaReportViewProps {
@@ -105,13 +106,10 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
   const item1 = item1Index !== -1 ? checklistReport.items[item1Index] : checklistReport.items[0];
   const item1Remark = item1?.remark ?? checklistReport.waReportPhotoCaption ?? '';
 
-  // Handle Photo upload from Gallery or Camera/Live
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  // Process Photo file or paste blob
+  const processPhotoFile = async (file: File | Blob) => {
     try {
-      const compressed = await compressImage(file, 800, 800, 0.72);
+      const compressed = await compressImage(file, 1200, 900, 0.78);
       const cur = latestChecklistRef.current;
       const curItem1 =
         cur.items.find((it) => it.no === 1 || it.taskList.toLowerCase().includes('unifi')) ||
@@ -126,12 +124,59 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
       };
       latestChecklistRef.current = updated;
       onUpdateChecklist(updated);
-      showNotice('✓ Photo successfully uploaded & synced to Database.');
+      showNotice('✓ Foto Task #1 berhasil ditempelkan dari Snipping Tool & tersimpan.');
     } catch (err) {
       console.error('Failed to process image:', err);
-      showNotice('Failed to process image. Please try again.');
-    } finally {
-      e.target.value = '';
+      showNotice('Gagal memproses gambar. Silakan coba lagi.');
+    }
+  };
+
+  // Handle Photo upload from Gallery or Camera/Live
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await processPhotoFile(file);
+    e.target.value = '';
+  };
+
+  // Handle clicking "Paste Snipping Tool" button for WaReport Card 4
+  const handlePasteClipboardForWaPhoto = async () => {
+    if (navigator.clipboard && navigator.clipboard.read) {
+      try {
+        const clipboardItems = await navigator.clipboard.read();
+        for (const item of clipboardItems) {
+          for (const type of item.types) {
+            if (type.startsWith('image/')) {
+              const blob = await item.getType(type);
+              await processPhotoFile(blob);
+              return;
+            }
+          }
+        }
+        showNotice('Tidak ditemukan gambar di clipboard. Copy screenshot dengan Snipping Tool lalu coba lagi.');
+      } catch {
+        showNotice('Akses clipboard dibatasi browser. Silakan klik kotak ini lalu tekan Ctrl + V.');
+      }
+    } else {
+      showNotice('Silakan klik kotak ini lalu tekan Ctrl + V di keyboard.');
+    }
+  };
+
+  // Paste event handler (Ctrl+V) for WaReport Card 4
+  const handleWaPhotoPaste = async (e: React.ClipboardEvent<HTMLDivElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items || items.length === 0) return;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) {
+          e.preventDefault();
+          e.stopPropagation();
+          await processPhotoFile(file);
+          return;
+        }
+      }
     }
   };
 
@@ -733,7 +778,12 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
             </div>
 
             {/* CARD 4: USER CONNECTED & AP (HEADER MATCHED WITH OTHER CARDS) */}
-            <div className="border border-amber-200 rounded-lg p-2.5 bg-amber-50/30 flex flex-col justify-between">
+            <div
+              tabIndex={0}
+              onPaste={handleWaPhotoPaste}
+              className="border border-amber-200 rounded-lg p-2.5 bg-amber-50/30 flex flex-col justify-between focus:ring-2 focus:ring-amber-500/50 outline-hidden"
+              title="Bisa paste screenshot langsung dari Snipping Tool (Ctrl+V)"
+            >
               <div>
                 <div className="flex items-center justify-between pb-1 mb-1.5 border-b border-amber-200">
                   <div className="flex items-center gap-1.5">
@@ -774,6 +824,14 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                     <div className="no-export absolute top-1 right-1 flex items-center gap-1 bg-black/70 backdrop-blur-xs rounded p-1 shadow-xs">
                       <button
                         type="button"
+                        onClick={handlePasteClipboardForWaPhoto}
+                        title="Paste Baru dari Snipping Tool (Ctrl+V)"
+                        className="p-1 text-white hover:text-amber-300 transition cursor-pointer"
+                      >
+                        <Clipboard className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => {
                           setChangePhotoConfirmTarget({
                             sourceType: 'gallery',
@@ -806,7 +864,7 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                         type="button"
                         onClick={handleRequestRemovePhoto}
                         title="Delete Photo No. 4"
-                        className="p-1 text-white hover:text-red-400 transition"
+                        className="p-1 text-white hover:text-red-400 transition cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -817,15 +875,24 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                   </div>
                 ) : (
                   <div className="mb-1.5 h-[145px] rounded border-2 border-dashed border-amber-300 bg-white/80 flex flex-col items-center justify-center p-2 text-center">
-                    <Camera className="w-6 h-6 text-amber-500 mb-1" />
+                    <Camera className="w-5 h-5 text-amber-500 mb-1" />
                     <p className="text-[10px] font-semibold text-slate-700 mb-2">
-                      Upload Documentation (Camera / Gallery)
+                      Upload Dokumentasi (Snipping Tool / Kamera / Galeri)
                     </p>
-                    <div className="no-export flex items-center gap-2">
+                    <div className="no-export flex items-center gap-1.5 flex-wrap justify-center">
+                      <button
+                        type="button"
+                        onClick={handlePasteClipboardForWaPhoto}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded text-[9.5px] font-bold transition shadow-2xs cursor-pointer"
+                        title="Paste screenshot langsung dari Snipping Tool (Ctrl+V)"
+                      >
+                        <Clipboard className="w-3 h-3 text-slate-950" />
+                        Paste Snipping Tool
+                      </button>
                       <button
                         type="button"
                         onClick={() => galleryInputRef.current?.click()}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded text-[9.5px] font-semibold transition border border-slate-300 shadow-2xs"
+                        className="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded text-[9.5px] font-semibold transition border border-slate-300 shadow-2xs cursor-pointer"
                       >
                         <Upload className="w-3 h-3 text-amber-700" />
                         Gallery
@@ -833,7 +900,7 @@ export const WaReportView: React.FC<WaReportViewProps> = ({
                       <button
                         type="button"
                         onClick={() => cameraInputRef.current?.click()}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded text-[9.5px] font-semibold transition shadow-2xs"
+                        className="inline-flex items-center gap-1 px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded text-[9.5px] font-semibold transition shadow-2xs cursor-pointer"
                       >
                         <Camera className="w-3 h-3" />
                         Live Camera
