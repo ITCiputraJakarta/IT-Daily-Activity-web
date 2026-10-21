@@ -72,10 +72,19 @@ service cloud.firestore {
       allow delete: if isValidDateString(date);
     }
 
-    // App Settings (Company Logo, IT PIC Team Members, Client Users)
+    // Weekly Maintenance Reports (Weekly IT Operations & Custom Reports)
+    match /weekly_reports/{weekId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.propertyName is string
+        && request.resource.data.updatedAt is number
+        && isReasonableSize();
+      allow delete: if true;
+    }
+
+    // App Settings (Company Logo, IT PIC Team Members, Client Users, Departments, Server Thresholds)
     match /app_settings/{settingId} {
       allow read: if true;
-      allow write: if settingId in ['company_logo', 'team_members', 'client_users']
+      allow write: if settingId in ['company_logo', 'team_members', 'client_users', 'departments', 'server_thresholds']
         && isReasonableSize();
     }
 
@@ -329,7 +338,7 @@ export const DatabaseStatusModal: React.FC<Props> = ({
                   <span className="font-bold">Status Keamanan: Terproteksi Standar Enterprise</span>
                 </div>
                 <span className="text-[11px] font-bold bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded-md">
-                  6/6 Proteksi Aktif
+                  7/7 Proteksi Aktif
                 </span>
               </div>
 
@@ -376,9 +385,21 @@ export const DatabaseStatusModal: React.FC<Props> = ({
                     ✓
                   </div>
                   <div>
+                    <h5 className="font-bold text-xs text-slate-900">Validasi & Proteksi Weekly Maintenance Report</h5>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Koleksi <code className="text-emerald-800 bg-slate-100 px-1 rounded font-mono">/weekly_reports/</code> memvalidasi integritas dokumen mingguan (7 halaman A4), monitoring AP, highlight, traffic, dan status operasional.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-xl p-3 flex items-start gap-3">
+                  <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
+                    ✓
+                  </div>
+                  <div>
                     <h5 className="font-bold text-xs text-slate-900">Isolasi Ketat Koleksi Pengaturan (app_settings)</h5>
                     <p className="text-[11px] text-slate-500 mt-0.5">
-                      Hanya mengizinkan 3 dokumen setting yang terdaftar resmi: <code className="font-mono text-slate-800 bg-slate-100 px-1 rounded">company_logo</code>, <code className="font-mono text-slate-800 bg-slate-100 px-1 rounded">team_members</code>, dan <code className="font-mono text-slate-800 bg-slate-100 px-1 rounded">client_users</code>.
+                      Hanya mengizinkan 5 dokumen setting yang terdaftar resmi: <code className="font-mono text-slate-800 bg-slate-100 px-1 rounded">company_logo</code>, <code className="font-mono text-slate-800 bg-slate-100 px-1 rounded">team_members</code>, <code className="font-mono text-slate-800 bg-slate-100 px-1 rounded">client_users</code>, <code className="font-mono text-slate-800 bg-slate-100 px-1 rounded">departments</code>, dan <code className="font-mono text-slate-800 bg-slate-100 px-1 rounded">server_thresholds</code>.
                     </p>
                   </div>
                 </div>

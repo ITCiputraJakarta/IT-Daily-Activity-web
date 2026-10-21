@@ -37,11 +37,27 @@
     },
     "AppSettings": {
       "title": "App Settings",
-      "description": "Company logo, IT PIC team members, and Client Users",
+      "description": "Company logo, IT PIC team members, client users, departments, and server thresholds",
       "type": "object",
       "properties": {
         "updatedAt": { "type": "number" }
       }
+    },
+    "WeeklyReport": {
+      "title": "Weekly Maintenance Report",
+      "description": "Weekly IT operations, highlights, guest traffic statistics, antivirus, backups, and AP monitoring",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "startDate": { "type": "string" },
+        "endDate": { "type": "string" },
+        "propertyName": { "type": "string" },
+        "prepared": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" },
+        "expiresAt": { "type": "number" }
+      },
+      "required": ["id", "propertyName", "createdAt"]
     }
   },
   "firestore": {
@@ -53,9 +69,13 @@
       "schema": "DailyChecklistReport",
       "description": "Stores daily IT 31-task checklist reports"
     },
+    "/weekly_reports/{weekId}": {
+      "schema": "WeeklyReport",
+      "description": "Stores weekly IT maintenance reports"
+    },
     "/app_settings/{settingId}": {
       "schema": "AppSettings",
-      "description": "Stores logo, team members, and client users"
+      "description": "Stores logo, team members, client users, departments, and thresholds"
     }
   }
 }

@@ -234,10 +234,10 @@ export const DailyActivityPrintView: React.FC<Props> = ({
                 <img
                   src={report.saraActivity.screenshotUrl}
                   alt="SARA Activity Screenshot"
-                  className="w-full max-h-48 object-contain rounded border border-slate-100"
+                  className="w-auto max-w-full max-h-[160px] object-contain block mx-auto rounded border border-slate-200 shadow-2xs"
                 />
               ) : (
-                <div className="h-24 w-full flex items-center justify-center text-slate-400 text-xs italic bg-slate-50 rounded">
+                <div className="h-20 w-full flex items-center justify-center text-slate-400 text-xs italic bg-slate-50 rounded">
                   - Belum ada screenshot SARA -
                 </div>
               )}
@@ -262,10 +262,10 @@ export const DailyActivityPrintView: React.FC<Props> = ({
                 <img
                   src={report.internetTraffic.screenshotUrl}
                   alt="Internet Traffic Analysis"
-                  className="w-full max-h-52 object-contain rounded border border-slate-100"
+                  className="w-auto max-w-full max-h-[165px] object-contain block mx-auto rounded border border-slate-200 shadow-2xs"
                 />
               ) : (
-                <div className="h-28 w-full flex items-center justify-center text-slate-400 text-xs italic bg-slate-50 rounded">
+                <div className="h-24 w-full flex items-center justify-center text-slate-400 text-xs italic bg-slate-50 rounded">
                   - Belum ada grafik traffic internet -
                 </div>
               )}
@@ -302,11 +302,11 @@ export const DailyActivityPrintView: React.FC<Props> = ({
                   <img
                     src={report.serverTemperature.photoUrl}
                     alt="Server Temperature & Humidity Meter"
-                    className="max-h-48 object-contain rounded-md border border-slate-200 shadow-xs"
+                    className="w-auto max-w-full max-h-[155px] object-contain block mx-auto rounded-md border border-slate-200 shadow-xs"
                   />
                 </div>
               ) : (
-                <div className="h-24 w-full flex items-center justify-center text-slate-400 text-xs italic bg-slate-50 rounded">
+                <div className="h-20 w-full flex items-center justify-center text-slate-400 text-xs italic bg-slate-50 rounded">
                   - Belum ada foto termometer server -
                 </div>
               )}

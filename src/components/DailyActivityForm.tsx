@@ -497,7 +497,7 @@ export const DailyActivityForm: React.FC<Props> = ({
   const processImageForActivity = async (file: File, index: number) => {
     if (!file.type.startsWith('image/')) return;
     try {
-      const compressed = await compressImage(file, 1600, 1600, 0.82);
+      const compressed = await compressImage(file, 1200, 900, 0.78);
       handleLogBookImageChange(index, compressed);
     } catch (err) {
       console.error('Failed to compress activity image:', err);

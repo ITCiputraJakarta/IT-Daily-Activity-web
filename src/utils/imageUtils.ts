@@ -3,7 +3,7 @@
  * into lightweight base64 data URLs (~30KB-60KB each)
  * Prevents Firestore document 1MB limit issues and speeds up export.
  */
-export async function compressImage(file: File | Blob, maxWidth = 900, maxHeight = 900, quality = 0.75): Promise<string> {
+export async function compressImage(file: File | Blob, maxWidth = 1200, maxHeight = 900, quality = 0.78): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (readerEvent) => {
@@ -34,7 +34,7 @@ export async function compressImage(file: File | Blob, maxWidth = 900, maxHeight
           return;
         }
 
-        // Draw image with smooth scaling
+        // Draw image with pure white background for crisp Snipping Tool screenshots (prevents black background on transparent PNGs)
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
@@ -42,12 +42,12 @@ export async function compressImage(file: File | Blob, maxWidth = 900, maxHeight
         // Convert to compressed jpeg
         let dataUrl = canvas.toDataURL('image/jpeg', quality);
 
-        // Adaptive step-down if base64 string is > 90KB so multiple photos per report never exceed Firestore 1MB limit or LocalStorage quota
+        // Adaptive step-down if base64 string is > 70KB so multiple photos per report never exceed Firestore 1MB limit or LocalStorage quota
         let currentQ = quality;
         let currentScale = 1.0;
-        while (dataUrl.length > 90000 && currentQ > 0.35) {
-          currentQ = Math.max(0.35, currentQ - 0.08);
-          currentScale *= 0.85;
+        while (dataUrl.length > 70000 && currentQ > 0.4) {
+          currentQ = Math.max(0.4, currentQ - 0.08);
+          currentScale *= 0.88;
           const stepCanvas = document.createElement('canvas');
           stepCanvas.width = Math.max(1, Math.round(width * currentScale));
           stepCanvas.height = Math.max(1, Math.round(height * currentScale));
@@ -57,7 +57,7 @@ export async function compressImage(file: File | Blob, maxWidth = 900, maxHeight
           stepCtx.fillRect(0, 0, stepCanvas.width, stepCanvas.height);
           stepCtx.drawImage(img, 0, 0, stepCanvas.width, stepCanvas.height);
           dataUrl = stepCanvas.toDataURL('image/jpeg', currentQ);
-          if (currentQ <= 0.35) break;
+          if (currentQ <= 0.4) break;
         }
 
         resolve(dataUrl);

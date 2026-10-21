@@ -47,7 +47,7 @@ export const ImageUploadDropzone: React.FC<Props> = ({
     }
     setIsProcessing(true);
     try {
-      const compressed = await compressImage(file, 1600, 1600, 0.82);
+      const compressed = await compressImage(file, 1200, 900, 0.78);
       onImageChange(compressed);
       showFeedback('✓ Gambar berhasil dimuat & dioptimalkan!', 'success');
     } catch (err: any) {

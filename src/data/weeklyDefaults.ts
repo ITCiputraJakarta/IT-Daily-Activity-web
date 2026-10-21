@@ -351,7 +351,7 @@ export function createDefaultWeeklyReport(baseDateStr?: string): WeeklyReport {
     signatureCityDate: `Jakarta / ${formatWeeklyDate(todayStr)}`,
     signatureName: 'Junianto Bagas Prasetyo',
     signatureTitle: 'Asst. IT Manager',
-    footerText: `INFORMATION TECHNOLOGY [FA DEPT] – ${info.year}`,
+    footerText: 'INFORMATION TECHNOLOGY [ITDEPT] – 2026 BG V.5',
 
     isUserModified: false,
     createdAt: now,
