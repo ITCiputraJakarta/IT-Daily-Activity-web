@@ -112,6 +112,12 @@ export const DailyActivityForm: React.FC<Props> = ({
   };
 
   const [highlightedIndex, setHighlightedIndex] = useState<number | null>(null);
+  const [pasteToast, setPasteToast] = useState<{ message: string; isError?: boolean } | null>(null);
+
+  const showPasteToast = (message: string, isError = false) => {
+    setPasteToast({ message, isError });
+    setTimeout(() => setPasteToast(null), 3500);
+  };
 
   // Identify the latest filled activity or the next empty one to be filled
   const latestFilledOrNextIndex = useMemo(() => {
@@ -537,16 +543,113 @@ export const DailyActivityForm: React.FC<Props> = ({
               const blob = await item.getType(type);
               const file = new File([blob], `activity-paste-${index + 1}.png`, { type });
               await processImageForActivity(file, index);
+              showPasteToast(`✓ Foto dokumentasi aktivitas #${index + 1} berhasil ditempelkan!`);
               return;
             }
           }
         }
-        alert('Tidak ditemukan gambar di clipboard. Silakan gunakan Snipping Tool untuk copy screenshot lalu klik tombol ini lagi.');
-      } catch (err) {
-        alert('Akses clipboard dibatasi browser. Silakan klik kartu aktivitas ini lalu tekan Ctrl + V di keyboard untuk menempelkan gambar dari Snipping Tool.');
+        showPasteToast('Tidak ditemukan gambar di clipboard. Buka Snipping Tool, copy screenshot, lalu klik tombol ini lagi.', true);
+      } catch {
+        showPasteToast('Akses clipboard dibatasi browser. Silakan klik kartu ini lalu tekan Ctrl + V untuk paste gambar.', true);
       }
     } else {
-      alert('Silakan klik kartu aktivitas ini lalu tekan Ctrl + V di keyboard untuk menempelkan gambar.');
+      showPasteToast('Silakan klik kartu aktivitas ini lalu tekan Ctrl + V di keyboard untuk menempelkan gambar.', true);
+    }
+  };
+
+  // Paste handlers for SARA, Internet Traffic, and Server Temperature
+  const handlePasteClipboardForSara = async () => {
+    if (navigator.clipboard && navigator.clipboard.read) {
+      try {
+        const clipboardItems = await navigator.clipboard.read();
+        for (const item of clipboardItems) {
+          for (const type of item.types) {
+            if (type.startsWith('image/')) {
+              const blob = await item.getType(type);
+              const compressed = await compressImage(blob, 1200, 900, 0.78);
+              handleSaraImageChange(compressed);
+              showPasteToast('✓ Screenshot SARA berhasil ditempelkan dari Snipping Tool!');
+              return;
+            }
+          }
+        }
+        showPasteToast('Tidak ditemukan gambar di clipboard. Copy screenshot SARA dengan Snipping Tool lalu klik tombol ini.', true);
+      } catch {
+        showPasteToast('Silakan klik area SARA ini lalu tekan Ctrl + V untuk paste screenshot.', true);
+      }
+    } else {
+      showPasteToast('Silakan klik area SARA ini lalu tekan Ctrl + V untuk paste screenshot.', true);
+    }
+  };
+
+  const handlePasteClipboardForTraffic = async () => {
+    if (navigator.clipboard && navigator.clipboard.read) {
+      try {
+        const clipboardItems = await navigator.clipboard.read();
+        for (const item of clipboardItems) {
+          for (const type of item.types) {
+            if (type.startsWith('image/')) {
+              const blob = await item.getType(type);
+              const compressed = await compressImage(blob, 1200, 900, 0.78);
+              handleTrafficImageChange(compressed);
+              showPasteToast('✓ Grafik traffic internet berhasil ditempelkan dari Snipping Tool!');
+              return;
+            }
+          }
+        }
+        showPasteToast('Tidak ditemukan gambar di clipboard. Copy grafik MRTG dengan Snipping Tool lalu klik tombol ini.', true);
+      } catch {
+        showPasteToast('Silakan klik area Traffic ini lalu tekan Ctrl + V untuk paste grafik.', true);
+      }
+    } else {
+      showPasteToast('Silakan klik area Traffic ini lalu tekan Ctrl + V untuk paste grafik.', true);
+    }
+  };
+
+  const handlePasteClipboardForServerTemp = async () => {
+    if (navigator.clipboard && navigator.clipboard.read) {
+      try {
+        const clipboardItems = await navigator.clipboard.read();
+        for (const item of clipboardItems) {
+          for (const type of item.types) {
+            if (type.startsWith('image/')) {
+              const blob = await item.getType(type);
+              const compressed = await compressImage(blob, 1200, 900, 0.78);
+              handleServerTempPhotoChange(compressed);
+              showPasteToast('✓ Foto termometer server berhasil ditempelkan dari Snipping Tool!');
+              return;
+            }
+          }
+        }
+        showPasteToast('Tidak ditemukan gambar di clipboard. Copy foto termometer lalu klik tombol ini.', true);
+      } catch {
+        showPasteToast('Silakan klik area Termometer lalu tekan Ctrl + V untuk paste foto.', true);
+      }
+    } else {
+      showPasteToast('Silakan klik area Termometer lalu tekan Ctrl + V untuk paste foto.', true);
+    }
+  };
+
+  const handleGenericPasteEvent = async (
+    e: React.ClipboardEvent<HTMLDivElement>,
+    setter: (dataUrl: string) => void,
+    successMsg: string
+  ) => {
+    const items = e.clipboardData?.items;
+    if (!items || items.length === 0) return;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) {
+          e.preventDefault();
+          e.stopPropagation();
+          const compressed = await compressImage(file, 1200, 900, 0.78);
+          setter(compressed);
+          showPasteToast(successMsg);
+          return;
+        }
+      }
     }
   };
 
@@ -586,6 +689,29 @@ export const DailyActivityForm: React.FC<Props> = ({
 
   return (
     <div className="space-y-6 pb-16 font-sans">
+      {/* Paste Notification Banner */}
+      {pasteToast && (
+        <div
+          className={`sticky top-2 z-40 p-3 rounded-xl shadow-lg border flex items-center justify-between text-xs font-bold transition-all animate-in fade-in slide-in-from-top-2 ${
+            pasteToast.isError
+              ? 'bg-amber-50 text-amber-950 border-amber-300'
+              : 'bg-emerald-50 text-emerald-950 border-emerald-300'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Clipboard className={`w-4 h-4 ${pasteToast.isError ? 'text-amber-600' : 'text-emerald-600'}`} />
+            <span>{pasteToast.message}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setPasteToast(null)}
+            className="text-slate-500 hover:text-slate-800 p-1 cursor-pointer font-bold ml-2"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Header Info Card */}
       <div className="bg-white rounded-xl shadow-xs border border-slate-200 p-4 md:p-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 mb-4 border-b border-slate-100 gap-3">
@@ -1416,7 +1542,11 @@ export const DailyActivityForm: React.FC<Props> = ({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
+          <div
+            tabIndex={0}
+            onPaste={(e) => handleGenericPasteEvent(e, handleSaraImageChange, '✓ Screenshot SARA berhasil ditempelkan dari Snipping Tool!')}
+            className="focus:outline-hidden focus:ring-1 focus:ring-amber-400 rounded-xl"
+          >
             <label className="block text-xs font-bold text-slate-700 mb-1">
               Screenshot Dashboard SARA
             </label>
@@ -1428,6 +1558,15 @@ export const DailyActivityForm: React.FC<Props> = ({
                   className="w-full h-36 object-contain"
                 />
                 <div className="flex items-center gap-1.5 absolute top-2 right-2">
+                  <button
+                    type="button"
+                    onClick={handlePasteClipboardForSara}
+                    className="px-2 py-0.5 bg-amber-500 hover:bg-amber-600 text-slate-950 text-[10px] rounded shadow-xs font-bold flex items-center gap-1 cursor-pointer"
+                    title="Paste screenshot baru dari Snipping Tool (Ctrl+V)"
+                  >
+                    <Clipboard className="w-3 h-3 text-slate-950" />
+                    Paste
+                  </button>
                   <button
                     type="button"
                     onClick={() => {
@@ -1476,7 +1615,16 @@ export const DailyActivityForm: React.FC<Props> = ({
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={handlePasteClipboardForSara}
+                  className="flex items-center justify-center gap-2 p-3 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-950 transition font-bold text-xs cursor-pointer shadow-2xs"
+                  title="Paste screenshot SARA langsung dari Snipping Tool (Ctrl+V)"
+                >
+                  <Clipboard className="w-4 h-4 text-amber-600" />
+                  <span>Paste Snipping Tool</span>
+                </button>
                 <button
                   type="button"
                   onClick={() => cameraInputRefs.current['sara']?.click()}
@@ -1564,7 +1712,11 @@ export const DailyActivityForm: React.FC<Props> = ({
         </div>
 
         <div className="space-y-4">
-          <div>
+          <div
+            tabIndex={0}
+            onPaste={(e) => handleGenericPasteEvent(e, handleTrafficImageChange, '✓ Grafik traffic internet berhasil ditempelkan dari Snipping Tool!')}
+            className="focus:outline-hidden focus:ring-1 focus:ring-amber-400 rounded-xl"
+          >
             <label className="block text-xs font-bold text-slate-700 mb-1">
               Grafik Analisis Trafik Internet (Traffic Analysis Graph)
             </label>
@@ -1576,6 +1728,15 @@ export const DailyActivityForm: React.FC<Props> = ({
                   className="w-full h-44 object-contain"
                 />
                 <div className="flex items-center gap-1.5 absolute top-2 right-2">
+                  <button
+                    type="button"
+                    onClick={handlePasteClipboardForTraffic}
+                    className="px-2 py-0.5 bg-amber-500 hover:bg-amber-600 text-slate-950 text-[10px] rounded shadow-xs font-bold flex items-center gap-1 cursor-pointer"
+                    title="Paste screenshot baru dari Snipping Tool (Ctrl+V)"
+                  >
+                    <Clipboard className="w-3 h-3 text-slate-950" />
+                    Paste
+                  </button>
                   <button
                     type="button"
                     onClick={() => {
@@ -1624,7 +1785,16 @@ export const DailyActivityForm: React.FC<Props> = ({
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={handlePasteClipboardForTraffic}
+                  className="flex items-center justify-center gap-2 p-3 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-950 transition font-bold text-xs cursor-pointer shadow-2xs"
+                  title="Paste grafik MRTG langsung dari Snipping Tool (Ctrl+V)"
+                >
+                  <Clipboard className="w-4 h-4 text-amber-600" />
+                  <span>Paste Snipping Tool</span>
+                </button>
                 <button
                   type="button"
                   onClick={() => cameraInputRefs.current['traffic']?.click()}
@@ -1789,7 +1959,11 @@ export const DailyActivityForm: React.FC<Props> = ({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
+          <div
+            tabIndex={0}
+            onPaste={(e) => handleGenericPasteEvent(e, handleServerTempPhotoChange, '✓ Foto termometer server berhasil ditempelkan dari Snipping Tool!')}
+            className="focus:outline-hidden focus:ring-1 focus:ring-amber-400 rounded-xl"
+          >
             <label className="block text-xs font-bold text-slate-700 mb-1">
               Foto Indikator ThermoPro / Termometer Server
             </label>
@@ -1801,6 +1975,15 @@ export const DailyActivityForm: React.FC<Props> = ({
                   className="w-full h-36 object-contain"
                 />
                 <div className="flex items-center gap-1.5 absolute top-2 right-2">
+                  <button
+                    type="button"
+                    onClick={handlePasteClipboardForServerTemp}
+                    className="px-2 py-0.5 bg-amber-500 hover:bg-amber-600 text-slate-950 text-[10px] rounded shadow-xs font-bold flex items-center gap-1 cursor-pointer"
+                    title="Paste screenshot baru dari Snipping Tool (Ctrl+V)"
+                  >
+                    <Clipboard className="w-3 h-3 text-slate-950" />
+                    Paste
+                  </button>
                   <button
                     type="button"
                     onClick={() => {
@@ -1849,7 +2032,19 @@ export const DailyActivityForm: React.FC<Props> = ({
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={handlePasteClipboardForServerTemp}
+                  className="flex items-center justify-center gap-2 p-3.5 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-950 transition font-bold text-xs cursor-pointer shadow-2xs"
+                  title="Paste foto termometer langsung dari Snipping Tool (Ctrl+V)"
+                >
+                  <Clipboard className="w-4 h-4 text-amber-600" />
+                  <div className="text-left">
+                    <span className="block font-bold">Paste Snipping Tool</span>
+                    <span className="block text-[10px] text-amber-800 font-normal">Dari Clipboard</span>
+                  </div>
+                </button>
                 <button
                   type="button"
                   onClick={() => cameraInputRefs.current['temp']?.click()}
