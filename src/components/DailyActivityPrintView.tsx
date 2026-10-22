@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { DailyActivityReport, ServerThresholdSettings } from '../types';
+import { DailyActivityReport, ServerThresholdSettings, RoutineActivityTemplate, LogBookItem } from '../types';
+import { getApplicableRoutineActivities } from '../data/teamMembers';
 import { CiputraLogo } from './CiputraLogo';
 
 interface Props {
@@ -8,6 +9,7 @@ interface Props {
   page2Ref?: React.RefObject<HTMLDivElement | null>;
   customLogoUrl?: string | null;
   thresholds?: ServerThresholdSettings;
+  routineTemplates?: RoutineActivityTemplate[];
 }
 
 export const DailyActivityPrintView: React.FC<Props> = ({
@@ -16,14 +18,83 @@ export const DailyActivityPrintView: React.FC<Props> = ({
   page2Ref,
   customLogoUrl,
   thresholds,
+  routineTemplates,
 }) => {
   // Only include activities with non-empty Activities Details.
-  // Re-number sequentially starting from 1 (e.g. if item 1 is empty, item 2 becomes No. 1)
+  // Guarantee that Routine Activities ALWAYS appear at the VERY BOTTOM of the table,
+  // with numbering continuing sequentially from the last regular activity.
   const validActivities = useMemo(() => {
-    return (report.logBookActivities || []).filter(
+    const rawActivities = (report.logBookActivities || []).filter(
       (act) => Boolean(act && typeof act.details === 'string' && act.details.trim() !== '')
     );
-  }, [report.logBookActivities]);
+
+    // If routine templates are passed, check active vs deactivated status
+    let activeRoutinesFromTemplates: LogBookItem[] = [];
+    const excludedIds = report.excludedRoutineIds || [];
+
+    if (routineTemplates && Array.isArray(routineTemplates)) {
+      const applicable = getApplicableRoutineActivities(routineTemplates, report.date);
+      // Map active templates that might not yet be in rawActivities
+      applicable.forEach((template) => {
+        const isExcluded = excludedIds.some(
+          (k) => k === template.id || k === template.details.trim().toLowerCase()
+        );
+        const alreadyInReport = rawActivities.some(
+          (act) => act.details?.trim().toLowerCase() === template.details.trim().toLowerCase()
+        );
+        if (!alreadyInReport && template.isActive && !isExcluded) {
+          activeRoutinesFromTemplates.push({
+            id: `routine-print-${template.id}`,
+            no: 0,
+            details: template.details,
+            clientName: template.clientName || '',
+            clientDepartment: template.clientDepartment || 'IT (Internal IT)',
+            userClient: template.clientDepartment || 'IT (Internal IT)',
+            status: template.defaultStatus || 'Done',
+            pic: report.prepared || 'IT Team',
+            pictureUrl: '',
+            isRoutine: true,
+            noPhoto: template.noPhoto ?? true,
+          });
+        }
+      });
+    }
+
+    // Split report activities into regular (non-routine) and routine activities
+    const regularItems = rawActivities.filter((act) => {
+      if (act.isRoutine) return false;
+      return true;
+    });
+
+    const existingRoutineItems = rawActivities.filter((act) => {
+      if (!act.isRoutine) return false;
+      const isExcluded = excludedIds.some(
+        (k) => k === act.details.trim().toLowerCase()
+      );
+      if (isExcluded) return false;
+
+      // If template exists and is deactivated, exclude it
+      if (routineTemplates) {
+        const matched = routineTemplates.find(
+          (t) => t.details.trim().toLowerCase() === act.details.trim().toLowerCase()
+        );
+        if (matched && !matched.isActive) return false;
+      }
+      return true;
+    });
+
+    // Combine routine items from report and any newly active templates
+    const allRoutineItems = [...existingRoutineItems, ...activeRoutinesFromTemplates];
+
+    // Combine: Regular tasks ALWAYS first, Routine tasks ALWAYS at the VERY BOTTOM
+    const combined = [...regularItems, ...allRoutineItems];
+
+    // Renumber sequentially 1..N starting from 1
+    return combined.map((act, index) => ({
+      ...act,
+      no: index + 1,
+    }));
+  }, [report.logBookActivities, report.date, report.prepared, routineTemplates]);
 
   const formatCleanTemp = (val?: string) => {
     if (!val || !val.trim()) return '-';

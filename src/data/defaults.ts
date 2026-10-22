@@ -160,29 +160,11 @@ export function createDefaultActivityReport(
   const applicableRoutines = getApplicableRoutineActivities(routineTemplates, date);
 
   const initialActivities: LogBookItem[] = [];
-
-  // Add applicable routine activities first as clean list items
-  applicableRoutines.forEach((routine, idx) => {
-    initialActivities.push({
-      id: `act-routine-${routine.id}-${date}`,
-      no: idx + 1,
-      details: routine.details,
-      clientName: routine.clientName || '',
-      clientDepartment: routine.clientDepartment || 'IT (Internal IT)',
-      userClient: routine.clientDepartment || 'IT (Internal IT)',
-      status: routine.defaultStatus || 'Done',
-      pic: pickPic(idx),
-      pictureUrl: '',
-      isRoutine: true,
-      noPhoto: routine.noPhoto ?? true,
-    });
-  });
-
-  // Ensure there is at least 1 ad-hoc empty slot available for custom entries
-  const remainingCount = Math.max(1, 3 - initialActivities.length);
   const departments = ['FO (Front Office)', 'HK (Housekeeping)', 'Engineering & Maintenance'];
-  for (let i = 0; i < remainingCount; i++) {
-    const currentNo = initialActivities.length + 1;
+
+  // 1. Regular empty slots for daily ad-hoc activities & photo uploads (Slots #1 - #3)
+  for (let i = 0; i < 3; i++) {
+    const currentNo = i + 1;
     initialActivities.push({
       id: `act-${currentNo}-${date}`,
       no: currentNo,
@@ -191,11 +173,29 @@ export function createDefaultActivityReport(
       clientDepartment: departments[i % departments.length],
       userClient: departments[i % departments.length],
       status: 'Done',
-      pic: pickPic(initialActivities.length),
+      pic: pickPic(i),
       pictureUrl: '',
       noPhoto: false,
     });
   }
+
+  // 2. Applicable routine list activities placed at the VERY BOTTOM with numbering continuing sequentially
+  applicableRoutines.forEach((routine) => {
+    const currentNo = initialActivities.length + 1;
+    initialActivities.push({
+      id: `act-routine-${routine.id}-${date}`,
+      no: currentNo,
+      details: routine.details,
+      clientName: routine.clientName || '',
+      clientDepartment: routine.clientDepartment || 'IT (Internal IT)',
+      userClient: routine.clientDepartment || 'IT (Internal IT)',
+      status: routine.defaultStatus || 'Done',
+      pic: pickPic(initialActivities.length),
+      pictureUrl: '',
+      isRoutine: true,
+      noPhoto: routine.noPhoto ?? true,
+    });
+  });
 
   return {
     id: date,

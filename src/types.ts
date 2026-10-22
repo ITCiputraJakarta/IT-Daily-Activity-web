@@ -97,6 +97,7 @@ export interface DailyActivityReport {
   serverTemperature: ServerTemperature;
   otherIssues: string;
   isUserModified?: boolean; // true when user has filled in fields or uploaded photos
+  excludedRoutineIds?: string[]; // IDs or details of routine tasks explicitly removed for this date
   createdAt: number;
   updatedAt: number;
   expiresAt: number; // 10 months (~300 days) retention after creation

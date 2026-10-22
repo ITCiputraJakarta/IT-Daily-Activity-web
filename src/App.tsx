@@ -580,18 +580,78 @@ export default function App() {
     setTimeout(() => setNotification(null), 3500);
   };
 
-  // Save routine activity templates to local storage & cloud
+  // Save routine activity templates to local storage & cloud, and sync active items to current report
   const handleSaveRoutineTemplates = (updated: RoutineActivityTemplate[]) => {
     const now = Date.now();
     setRoutineTemplates(updated);
     saveRoutineActivitiesToStorage(updated, now);
     saveRoutineActivitiesToCloud(updated, now).catch(console.error);
 
-    setNotification('✓ Daftar template aktivitas rutin berhasil diperbarui.');
+    // Synchronize active routine items into the current active report at the VERY BOTTOM
+    setActivityReport((prev) => {
+      const applicable = getApplicableRoutineActivities(updated, prev.date);
+      const activeMembers = teamMembers.filter((m) => m.isActive);
+      const pickPic = (idx: number) =>
+        activeMembers.length > 0 ? activeMembers[idx % activeMembers.length].name : '';
+
+      // 1. Keep regular activities (non-routine)
+      const regularItems = prev.logBookActivities.filter((act) => !act.isRoutine);
+
+      // 2. Map active routine items (preserve existing status/pic if already filled)
+      const routineItems: LogBookItem[] = [];
+      applicable.forEach((template, tIdx) => {
+        const existing = prev.logBookActivities.find(
+          (act) => act.isRoutine && act.details?.trim().toLowerCase() === template.details.trim().toLowerCase()
+        );
+        if (existing) {
+          routineItems.push({
+            ...existing,
+            details: template.details,
+            clientName: template.clientName || existing.clientName || '',
+            clientDepartment: template.clientDepartment || existing.clientDepartment || 'IT (Internal IT)',
+            userClient: template.clientDepartment || existing.userClient || 'IT (Internal IT)',
+            noPhoto: template.noPhoto ?? true,
+          });
+        } else {
+          routineItems.push({
+            id: `act-routine-${template.id}-${now}-${tIdx}`,
+            no: 0,
+            details: template.details,
+            clientName: template.clientName || '',
+            clientDepartment: template.clientDepartment || 'IT (Internal IT)',
+            userClient: template.clientDepartment || 'IT (Internal IT)',
+            status: template.defaultStatus || 'Done',
+            pic: pickPic(tIdx),
+            pictureUrl: '',
+            isRoutine: true,
+            noPhoto: template.noPhoto ?? true,
+          });
+        }
+      });
+
+      // 3. Regular tasks ALWAYS first, Routine tasks ALWAYS at the VERY BOTTOM with continuous numbering
+      const combined = [...regularItems, ...routineItems];
+      const renumbered = combined.map((act, i) => ({ ...act, no: i + 1 }));
+
+      const updatedRep: DailyActivityReport = {
+        ...prev,
+        logBookActivities: renumbered,
+        isUserModified: true,
+        updatedAt: now,
+      };
+
+      latestActRef.current = updatedRep;
+      saveActivityReportLocalImmediate(updatedRep);
+      saveActivityReport(updatedRep).catch(console.error);
+
+      return updatedRep;
+    });
+
+    setNotification('✓ Template aktivitas rutin diperbarui & otomatis masuk ke laporan di bagian paling bawah.');
     setTimeout(() => setNotification(null), 3500);
   };
 
-  // Apply routine activity templates to current active report (without wiping custom user items)
+  // Apply routine activity templates to current active report at the VERY BOTTOM
   const handleApplyRoutineToCurrentReport = () => {
     const applicable = getApplicableRoutineActivities(routineTemplates, activityReport.date);
     if (applicable.length === 0) {
@@ -606,24 +666,19 @@ export default function App() {
       const pickPic = (idx: number) =>
         activeMembers.length > 0 ? activeMembers[idx % activeMembers.length].name : '';
 
-      const currentActivities = [...prev.logBookActivities];
-      let addedCount = 0;
+      const regularItems = prev.logBookActivities.filter((act) => !act.isRoutine);
+      const routineItems: LogBookItem[] = [];
 
       applicable.forEach((template, tIdx) => {
-        // Check if already present by exact details
-        const exists = currentActivities.some(
-          (act) => act.details.trim().toLowerCase() === template.details.trim().toLowerCase()
+        const existing = prev.logBookActivities.find(
+          (act) => act.isRoutine && act.details?.trim().toLowerCase() === template.details.trim().toLowerCase()
         );
-        if (!exists) {
-          // Find first empty activity slot or append
-          const emptyIdx = currentActivities.findIndex(
-            (act) => !act.details?.trim() && !act.pictureUrl?.trim()
-          );
-
-          const newNo = emptyIdx !== -1 ? emptyIdx + 1 : currentActivities.length + 1;
-          const newItem: LogBookItem = {
-            id: `act-routine-${template.id}-${Date.now()}-${tIdx}`,
-            no: newNo,
+        if (existing) {
+          routineItems.push(existing);
+        } else {
+          routineItems.push({
+            id: `act-routine-${template.id}-${now}-${tIdx}`,
+            no: 0,
             details: template.details,
             clientName: template.clientName || '',
             clientDepartment: template.clientDepartment || 'IT (Internal IT)',
@@ -633,19 +688,14 @@ export default function App() {
             pictureUrl: '',
             isRoutine: true,
             noPhoto: template.noPhoto ?? true,
-          };
-
-          if (emptyIdx !== -1) {
-            currentActivities[emptyIdx] = newItem;
-          } else {
-            currentActivities.push(newItem);
-          }
-          addedCount++;
+          });
         }
       });
 
-      // Re-number sequentially
-      const renumbered = currentActivities.map((act, i) => ({ ...act, no: i + 1 }));
+      // Regular first, routine tasks at the VERY BOTTOM
+      const combined = [...regularItems, ...routineItems];
+      const renumbered = combined.map((act, i) => ({ ...act, no: i + 1 }));
+
       const updatedRep: DailyActivityReport = {
         ...prev,
         logBookActivities: renumbered,
@@ -658,7 +708,7 @@ export default function App() {
       saveActivityReport(updatedRep).catch(console.error);
 
       setNotification(
-        `✓ ${addedCount} aktivitas rutin (${isDateWeekend(prev.date) ? 'Weekend' : 'Weekday'}) diterapkan ke form.`
+        `✓ ${routineItems.length} aktivitas rutin (${isDateWeekend(prev.date) ? 'Weekend' : 'Weekday'}) diterapkan di bagian paling bawah laporan.`
       );
       setTimeout(() => setNotification(null), 3500);
 
@@ -1066,7 +1116,53 @@ export default function App() {
             finalAct = createDefaultActivityReport(selectedDate, thresholds, routineTemplates);
             shouldSnapshotActivity = true;
           } else {
-            finalAct = loadedAct;
+            const applicableRoutines = getApplicableRoutineActivities(routineTemplates, selectedDate);
+            const excluded = loadedAct.excludedRoutineIds || [];
+
+            const regularItems = loadedAct.logBookActivities.filter((act) => !act.isRoutine);
+            const currentRoutines = loadedAct.logBookActivities.filter((act) => act.isRoutine);
+
+            let addedAny = false;
+            const finalRoutines = [...currentRoutines];
+
+            applicableRoutines.forEach((tpl) => {
+              const isExcluded =
+                excluded.includes(tpl.id) ||
+                excluded.includes(tpl.details.trim().toLowerCase());
+
+              if (!isExcluded) {
+                const exists = finalRoutines.some(
+                  (act) => act.details?.trim().toLowerCase() === tpl.details.trim().toLowerCase()
+                );
+                if (!exists) {
+                  finalRoutines.push({
+                    id: `act-routine-${tpl.id}-${selectedDate}`,
+                    no: 0,
+                    details: tpl.details,
+                    clientName: tpl.clientName || '',
+                    clientDepartment: tpl.clientDepartment || 'IT (Internal IT)',
+                    userClient: tpl.clientDepartment || 'IT (Internal IT)',
+                    status: tpl.defaultStatus || 'Done',
+                    pic: loadedAct.prepared || 'IT Team',
+                    pictureUrl: '',
+                    isRoutine: true,
+                    noPhoto: tpl.noPhoto ?? true,
+                  });
+                  addedAny = true;
+                }
+              }
+            });
+
+            if (addedAny) {
+              const combined = [...regularItems, ...finalRoutines];
+              const renumbered = combined.map((act, i) => ({ ...act, no: i + 1 }));
+              finalAct = {
+                ...loadedAct,
+                logBookActivities: renumbered,
+              };
+            } else {
+              finalAct = loadedAct;
+            }
           }
         } else {
           finalAct = createDefaultActivityReport(selectedDate, thresholds, routineTemplates);
@@ -1819,6 +1915,7 @@ export default function App() {
                   report={activityReport}
                   customLogoUrl={customLogoUrl}
                   thresholds={thresholds}
+                  routineTemplates={routineTemplates}
                 />
               ) : activeTab === 'checklist' ? (
                 <DailyChecklistPrintView
@@ -1859,6 +1956,7 @@ export default function App() {
             page2Ref={actPage2Ref}
             customLogoUrl={customLogoUrl}
             thresholds={thresholds}
+            routineTemplates={routineTemplates}
           />
           <DailyChecklistPrintView
             report={checklistReport}
@@ -1881,6 +1979,7 @@ export default function App() {
               report={activityReport}
               customLogoUrl={customLogoUrl}
               thresholds={thresholds}
+              routineTemplates={routineTemplates}
             />
           ) : activeTab === 'checklist' ? (
             <DailyChecklistPrintView
