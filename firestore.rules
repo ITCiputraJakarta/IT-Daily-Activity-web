@@ -9,8 +9,8 @@ service cloud.firestore {
     }
 
     function isReasonableSize() {
-      // Prevents oversized document injections while easily accommodating compressed images (~60KB)
-      return request.resource.data.size() < 100;
+      // Prevents oversized document injections while easily accommodating all fields and compressed images
+      return request.resource.data.size() < 200;
     }
 
     // Daily Activity Reports (IT Daily Operations & Logbook)

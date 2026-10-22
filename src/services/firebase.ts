@@ -28,15 +28,21 @@ import {
   recordFirebaseWrite,
   recordFirebaseDelete
 } from './quotaTracker';
+import firebaseAppConfig from '../../firebase-applet-config.json';
 
 export const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyCBuEIu1ITK40brP7SCWKQOQBdaMDFQx6M",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "daily-ctivity-itbg.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "daily-ctivity-itbg",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "daily-ctivity-itbg.firebasestorage.app",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "927845263252",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:927845263252:web:92522c80b69caf611a1181"
+  apiKey: import.meta.env?.VITE_FIREBASE_API_KEY || firebaseAppConfig.apiKey || "AIzaSyCBuEIu1ITK40brP7SCWKQOQBdaMDFQx6M",
+  authDomain: import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN || firebaseAppConfig.authDomain || "daily-ctivity-itbg.firebaseapp.com",
+  projectId: import.meta.env?.VITE_FIREBASE_PROJECT_ID || firebaseAppConfig.projectId || "daily-ctivity-itbg",
+  storageBucket: import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET || firebaseAppConfig.storageBucket || "daily-ctivity-itbg.firebasestorage.app",
+  messagingSenderId: import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseAppConfig.messagingSenderId || "927845263252",
+  appId: import.meta.env?.VITE_FIREBASE_APP_ID || firebaseAppConfig.appId || "1:927845263252:web:f898a178c42d55091a1181"
 };
+
+export const firestoreDatabaseId: string | undefined =
+  import.meta.env?.VITE_FIREBASE_FIRESTORE_DATABASE_ID ||
+  firebaseAppConfig.firestoreDatabaseId ||
+  "ai-studio-itdailyactivityc-5a4ee3d6-d73e-41b1-b9e4-702e425dbd24";
 
 const isFirebaseConfigured = Boolean(firebaseConfig.apiKey && firebaseConfig.projectId);
 
@@ -49,19 +55,38 @@ const app = isFirebaseConfigured
 let firestoreDb: ReturnType<typeof getFirestore>;
 if (app) {
   try {
-    firestoreDb = initializeFirestore(app, {
-      ignoreUndefinedProperties: true,
-      localCache: persistentLocalCache({
-        tabManager: persistentMultipleTabManager(),
-      }),
-    });
+    firestoreDb = firestoreDatabaseId
+      ? initializeFirestore(
+          app,
+          {
+            ignoreUndefinedProperties: true,
+            localCache: persistentLocalCache({
+              tabManager: persistentMultipleTabManager(),
+            }),
+          },
+          firestoreDatabaseId
+        )
+      : initializeFirestore(app, {
+          ignoreUndefinedProperties: true,
+          localCache: persistentLocalCache({
+            tabManager: persistentMultipleTabManager(),
+          }),
+        });
   } catch {
     try {
-      firestoreDb = initializeFirestore(app, {
-        ignoreUndefinedProperties: true,
-      });
+      firestoreDb = firestoreDatabaseId
+        ? initializeFirestore(
+            app,
+            {
+              ignoreUndefinedProperties: true,
+            },
+            firestoreDatabaseId
+          )
+        : initializeFirestore(app, {
+            ignoreUndefinedProperties: true,
+          });
     } catch {
-      firestoreDb = getFirestore(app);
+      firestoreDb = firestoreDatabaseId ? getFirestore(app, firestoreDatabaseId) : getFirestore(app);
     }
   }
 } else {
