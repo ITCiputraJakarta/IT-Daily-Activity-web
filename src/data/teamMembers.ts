@@ -1,4 +1,4 @@
-import { TeamMember, ClientUser, ServerThresholdSettings } from '../types';
+import { TeamMember, ClientUser, ServerThresholdSettings, RoutineActivityTemplate } from '../types';
 
 export const DEFAULT_SERVER_THRESHOLDS: ServerThresholdSettings = {
   minTemp: 17,
@@ -199,6 +199,102 @@ export function saveServerThresholdsToStorage(
   } catch (e) {
     console.warn('Failed to save server thresholds to localStorage:', e);
   }
+}
+
+export const DEFAULT_ROUTINE_ACTIVITIES: RoutineActivityTemplate[] = [
+  {
+    id: 'routine-1',
+    details: 'Update Digital Signage & Content Event Hotel',
+    clientName: 'Public Area / Lobby',
+    clientDepartment: 'Sales & Marketing',
+    schedule: 'everyday',
+    defaultStatus: 'Done',
+    noPhoto: true,
+    isActive: true,
+    order: 1,
+  },
+  {
+    id: 'routine-2',
+    details: 'Pengecekan Laptop GM & IT Setup Ruang Rapat (GM Check Laptop)',
+    clientName: 'General Manager',
+    clientDepartment: 'Executive Office / GM',
+    schedule: 'weekday',
+    defaultStatus: 'Done',
+    noPhoto: true,
+    isActive: true,
+    order: 2,
+  },
+];
+
+const LS_ROUTINE_ACTIVITIES_KEY = 'hcj_it_routine_activities_v1';
+const LS_ROUTINE_ACTIVITIES_UPDATED_KEY = 'hcj_it_routine_activities_updated_at_v1';
+
+export function loadRoutineActivities(): RoutineActivityTemplate[] {
+  try {
+    const raw = localStorage.getItem(LS_ROUTINE_ACTIVITIES_KEY);
+    if (raw !== null) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to load routine activities from localStorage:', e);
+  }
+  return DEFAULT_ROUTINE_ACTIVITIES;
+}
+
+export function getRoutineActivitiesLocalUpdatedAt(): number {
+  try {
+    const raw = localStorage.getItem(LS_ROUTINE_ACTIVITIES_UPDATED_KEY);
+    return raw ? parseInt(raw, 10) || 0 : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function saveRoutineActivitiesToStorage(
+  templates: RoutineActivityTemplate[],
+  updatedAt = Date.now()
+): void {
+  try {
+    localStorage.setItem(LS_ROUTINE_ACTIVITIES_KEY, JSON.stringify(templates));
+    localStorage.setItem(LS_ROUTINE_ACTIVITIES_UPDATED_KEY, String(updatedAt));
+  } catch (e) {
+    console.warn('Failed to save routine activities to localStorage:', e);
+  }
+}
+
+/**
+ * Checks whether a given YYYY-MM-DD date falls on a weekend (Saturday or Sunday)
+ */
+export function isDateWeekend(dateStr: string): boolean {
+  if (!dateStr) return false;
+  const parts = dateStr.split('-').map(Number);
+  if (parts.length !== 3) return false;
+  const [y, m, d] = parts;
+  const dt = new Date(y, m - 1, d, 12, 0, 0);
+  const day = dt.getDay(); // 0 is Sunday, 6 is Saturday
+  return day === 0 || day === 6;
+}
+
+/**
+ * Filter routine activities that should appear on a specific date (Weekday vs Weekend vs Everyday)
+ */
+export function getApplicableRoutineActivities(
+  templates: RoutineActivityTemplate[],
+  dateStr: string
+): RoutineActivityTemplate[] {
+  const isWeekend = isDateWeekend(dateStr);
+  return templates
+    .filter((item) => {
+      if (!item.isActive) return false;
+      if (item.schedule === 'everyday') return true;
+      if (item.schedule === 'weekday') return !isWeekend;
+      if (item.schedule === 'weekend') return isWeekend;
+      return true;
+    })
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 }
 
 

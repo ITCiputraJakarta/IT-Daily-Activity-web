@@ -1,6 +1,6 @@
 import React, { useRef, useState, useMemo } from 'react';
-import { DailyActivityReport, LogBookItem, TeamMember, ClientUser, ServerThresholdSettings } from '../types';
-import { CLIENT_DEPARTMENTS } from '../data/teamMembers';
+import { DailyActivityReport, LogBookItem, TeamMember, ClientUser, ServerThresholdSettings, RoutineActivityTemplate } from '../types';
+import { CLIENT_DEPARTMENTS, loadRoutineActivities, getApplicableRoutineActivities, isDateWeekend } from '../data/teamMembers';
 import { createDefaultActivityReport } from '../data/defaults';
 import { compressImage } from '../utils/imageUtils';
 import { CiputraLogo } from './CiputraLogo';
@@ -29,7 +29,9 @@ import {
   Filter,
   AlertTriangle,
   Zap,
-  Smartphone
+  Smartphone,
+  ListChecks,
+  Sparkles
 } from 'lucide-react';
 
 interface Props {
@@ -49,6 +51,8 @@ interface Props {
   onAutoSaveActivity?: (updated: DailyActivityReport) => void;
   thresholds?: ServerThresholdSettings;
   onOpenThresholdModal?: () => void;
+  routineTemplates?: RoutineActivityTemplate[];
+  onOpenRoutineModal?: () => void;
 }
 
 type ActivitySortOption = 'no-desc' | 'no-asc' | 'user-asc' | 'dept-asc' | 'pic-asc' | 'status';
@@ -70,6 +74,8 @@ export const DailyActivityForm: React.FC<Props> = ({
   onAutoSaveActivity,
   thresholds,
   onOpenThresholdModal,
+  routineTemplates,
+  onOpenRoutineModal,
 }) => {
   // Separate refs for live camera capture vs gallery picker
   const cameraInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
@@ -415,12 +421,12 @@ export const DailyActivityForm: React.FC<Props> = ({
       handleSaraImageChange('');
       showLocalNotice('✓ Screenshot dashboard SARA berhasil dihapus.');
     } else if (deleteConfirmTarget.type === 'reset_worksheet') {
-      const blank = createDefaultActivityReport(report.date);
+      const blank = createDefaultActivityReport(report.date, thresholds, routineTemplates);
       onChange(blank);
       if (onAutoSaveActivity) {
         onAutoSaveActivity(blank);
       }
-      showLocalNotice('✓ Lembar kerja Daily Activity berhasil di-reset.');
+      showLocalNotice('✓ Lembar kerja Daily Activity berhasil di-reset dengan template rutin bawaan.');
     }
 
     setDeleteConfirmTarget(null);
@@ -430,8 +436,61 @@ export const DailyActivityForm: React.FC<Props> = ({
     setDeleteConfirmTarget({
       type: 'reset_worksheet',
       title: 'Reset Lembar Kerja Daily Activity?',
-      description: 'Apakah Anda yakin ingin mereset lembar kerja tanggal ini menjadi lembar baru bersih dengan 3 aktivitas kosong? Data sebelumnya pada tanggal ini akan diganti.',
+      description: 'Apakah Anda yakin ingin mereset lembar kerja tanggal ini? Form akan dimuat ulang dengan template aktivitas rutin harian sesuai jadwal tanggal ini.',
     });
+  };
+
+  const handleApplyRoutineTasks = () => {
+    const templates = routineTemplates || loadRoutineActivities();
+    const applicable = getApplicableRoutineActivities(templates, report.date);
+    if (applicable.length === 0) {
+      showPasteToast('Tidak ada template aktivitas rutin yang dijadwalkan untuk hari ini.');
+      return;
+    }
+
+    const currentActivities = [...report.logBookActivities];
+    let addedCount = 0;
+
+    applicable.forEach((t) => {
+      // Check if already in currentActivities by details
+      const exists = currentActivities.some(
+        (act) => act.details?.trim().toLowerCase() === t.details.trim().toLowerCase()
+      );
+      if (!exists) {
+        // If the first activity is completely empty, replace it, otherwise append
+        const emptyIdx = currentActivities.findIndex(
+          (act) => !act.details?.trim() && !act.pictureUrl && !act.clientName?.trim()
+        );
+        const newItem: LogBookItem = {
+          id: `act-routine-${t.id}-${Date.now()}-${addedCount}`,
+          no: emptyIdx !== -1 ? emptyIdx + 1 : currentActivities.length + 1,
+          details: t.details,
+          clientName: t.clientName || '',
+          clientDepartment: t.clientDepartment || 'IT (Internal IT)',
+          userClient: t.clientDepartment || 'IT (Internal IT)',
+          status: t.defaultStatus || 'Done',
+          pic: activeMembers[0]?.name || '',
+          pictureUrl: '',
+          isRoutine: true,
+          noPhoto: t.noPhoto ?? true,
+        };
+
+        if (emptyIdx !== -1) {
+          currentActivities[emptyIdx] = newItem;
+        } else {
+          currentActivities.push(newItem);
+        }
+        addedCount++;
+      }
+    });
+
+    const renumbered = currentActivities.map((act, idx) => ({ ...act, no: idx + 1 }));
+    updateField('logBookActivities', renumbered);
+    if (addedCount > 0) {
+      showPasteToast(`✓ ${addedCount} aktivitas rutin (${isDateWeekend(report.date) ? 'Weekend' : 'Weekday'}) berhasil dimuat ke daftar!`);
+    } else {
+      showPasteToast('Semua aktivitas rutin hari ini sudah ada dalam daftar.');
+    }
   };
 
   const addLogBookItem = () => {
@@ -877,14 +936,34 @@ export const DailyActivityForm: React.FC<Props> = ({
               <Users className="w-3.5 h-3.5 text-emerald-600" />
               <span>Kelola PIC</span>
             </button>
+            {onOpenRoutineModal && (
+              <button
+                type="button"
+                onClick={onOpenRoutineModal}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-xs font-bold transition cursor-pointer shadow-2xs"
+                title="Kelola template aktivitas rutin harian (Update Signage, GM Check Laptop, dll)"
+              >
+                <ListChecks className="w-3.5 h-3.5 text-amber-700" />
+                <span>Kelola Rutin</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleApplyRoutineTasks}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-lg text-xs font-bold transition cursor-pointer shadow-2xs"
+              title="Muat template aktivitas rutin hari ini (otomatis sesuaikan Weekday/Weekend)"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-emerald-700" />
+              <span>+ Muat Template Rutin</span>
+            </button>
             <button
               type="button"
               onClick={handleResetToNewWorksheet}
-              title="Reset hari ini ke lembar kerja baru bersih (3 aktivitas kosong)"
+              title="Reset hari ini ke lembar kerja baru bersih (aktivitas rutin sesuai tanggal)"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition border border-slate-300 cursor-pointer"
             >
               <RefreshCw className="w-3.5 h-3.5 text-slate-600" />
-              <span>Lembar Baru (3 Blank)</span>
+              <span>Reset Lembar</span>
             </button>
             <button
               type="button"
@@ -1116,6 +1195,16 @@ export const DailyActivityForm: React.FC<Props> = ({
                   <span className="text-xs font-bold text-slate-900">
                     Aktivitas #{index + 1}
                   </span>
+                  {act.isRoutine && (
+                    <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-amber-100 text-amber-900 border border-amber-300">
+                      Rutin
+                    </span>
+                  )}
+                  {act.noPhoto && (
+                    <span className="px-1.5 py-0.5 text-[9.5px] font-semibold rounded-md bg-slate-100 text-slate-700 border border-slate-200">
+                      List (Tanpa Foto)
+                    </span>
+                  )}
                   {index === report.logBookActivities.length - 1 && (
                     <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-slate-800 text-white">
                       Poin Terakhir
@@ -1326,188 +1415,225 @@ export const DailyActivityForm: React.FC<Props> = ({
                 </div>
               </div>
 
-              {/* Photo Upload Box with Dedicated Camera & Gallery Buttons */}
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                    <ImageIcon className="w-3.5 h-3.5 text-slate-500" />
-                    Picture or Documentation (Foto / Bukti Kasus)
-                  </span>
-                  {act.pictureUrl && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDeleteConfirmTarget({
-                          type: 'activity_photo',
-                          index,
-                          title: `Hapus Foto Aktivitas #${act.no}?`,
-                          description: `Apakah Anda yakin ingin menghapus foto dokumentasi untuk aktivitas nomor ${act.no}?`,
-                        });
-                      }}
-                      className="text-[11px] text-red-600 hover:underline font-semibold cursor-pointer"
-                    >
-                      Hapus Foto
-                    </button>
-                  )}
-                </div>
-
-                {act.pictureUrl ? (
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                    <img
-                      src={act.pictureUrl}
-                      alt="Dokumentasi Kasus"
-                      className="h-28 w-44 object-contain bg-slate-100 rounded-lg border border-slate-200 shadow-xs"
-                    />
-                    <div className="text-xs text-slate-600 space-y-2">
-                      <div>
-                        <p className="text-emerald-700 font-bold flex items-center gap-1">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                          Foto Dokumentasi Terlampir
-                        </p>
-                        <p className="text-[11px] text-slate-500">
-                          Siap dicetak di lembar A4 &amp; otomatis tersimpan ke cloud.
-                        </p>
-                      </div>
-
-                      {/* Change options: Camera, Snipping Tool Paste, or Gallery */}
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <button
-                          type="button"
-                          onClick={() => handlePasteClipboardForActivity(index)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-lg text-xs transition shadow-2xs cursor-pointer"
-                          title="Paste screenshot baru dari Snipping Tool (Ctrl+V)"
-                        >
-                          <Clipboard className="w-3.5 h-3.5" />
-                          <span>Paste Snipping Tool</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setChangePhotoConfirmTarget({
-                              title: `Ganti Foto Aktivitas #${act.no}?`,
-                              description: `Foto dokumentasi untuk aktivitas #${act.no} sudah terlampir. Mengambil foto baru via kamera akan menimpa foto lama. Apakah Anda yakin ingin melanjutkan membuka kamera?`,
-                              actionLabel: 'Ya, Buka Kamera',
-                              sourceType: 'camera',
-                              onConfirm: () => cameraInputRefs.current[`act-${index}`]?.click(),
-                            });
-                          }}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition shadow-2xs cursor-pointer"
-                        >
-                          <Camera className="w-3.5 h-3.5 text-white" />
-                          Foto Ulang (Kamera)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setChangePhotoConfirmTarget({
-                              title: `Ganti Foto Aktivitas #${act.no}?`,
-                              description: `Foto dokumentasi untuk aktivitas #${act.no} sudah terlampir. Memilih foto baru dari galeri akan menimpa foto lama. Apakah Anda yakin ingin melanjutkan membuka galeri?`,
-                              actionLabel: 'Ya, Buka Galeri',
-                              sourceType: 'gallery',
-                              onConfirm: () => galleryInputRefs.current[`act-${index}`]?.click(),
-                            });
-                          }}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold transition cursor-pointer"
-                        >
-                          <Upload className="w-3.5 h-3.5 text-slate-600" />
-                          Ganti dari Galeri
-                        </button>
-                      </div>
+              {/* Photo Upload Box: Compact List Mode vs Full Photo Controls */}
+              {act.noPhoto && !act.pictureUrl ? (
+                <div className="bg-slate-50/80 p-3 rounded-xl border border-dashed border-slate-300 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
+                  <div className="flex items-center gap-2 text-slate-700">
+                    <ListChecks className="w-4 h-4 text-amber-600 shrink-0" />
+                    <div>
+                      <span className="font-bold text-slate-800">Format List Saja (Tanpa Foto Dokumentasi)</span>
+                      <p className="text-[10.5px] text-slate-500">
+                        {act.isRoutine
+                          ? 'Aktivitas rutin ini tampil dalam format tabel ringkas & hemat halaman pada lembar cetak A4.'
+                          : 'Aktivitas ini tampil rapi sebagai baris tabel pada cetak A4 tanpa mewajibkan foto.'}
+                      </p>
                     </div>
                   </div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                    {/* Paste from Snipping Tool Button */}
-                    <button
-                      type="button"
-                      onClick={() => handlePasteClipboardForActivity(index)}
-                      className="flex items-center justify-center gap-2 p-3 rounded-xl border border-amber-300 bg-amber-50/80 hover:bg-amber-100/90 text-slate-900 transition font-bold text-xs shadow-2xs cursor-pointer"
-                      title="Paste screenshot langsung dari Windows Snipping Tool (atau klik kartu lalu tekan Ctrl+V)"
-                    >
-                      <div className="w-7 h-7 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center shrink-0">
-                        <Clipboard className="w-4 h-4" />
-                      </div>
-                      <div className="text-left">
-                        <span className="block font-bold text-xs text-slate-950">
-                          Paste Snipping Tool
-                        </span>
-                        <span className="block text-[10px] text-amber-900 font-medium">
-                          Bisa klik atau tekan Ctrl+V
-                        </span>
-                      </div>
-                    </button>
-
-                    {/* Live Camera Button (Direct to Phone / Tablet Camera) */}
-                    <button
-                      type="button"
-                      onClick={() => cameraInputRefs.current[`act-${index}`]?.click()}
-                      className="flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-dashed border-emerald-400 bg-emerald-50/50 hover:bg-emerald-50 text-slate-800 transition font-bold text-xs shadow-2xs cursor-pointer"
-                    >
-                      <div className="w-7 h-7 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0">
-                        <Camera className="w-4 h-4" />
-                      </div>
-                      <div className="text-left">
-                        <span className="block font-bold text-xs text-slate-900">
-                          Buka Kamera
-                        </span>
-                        <span className="block text-[10px] text-emerald-700 font-medium">
-                          Live foto via kamera HP
-                        </span>
-                      </div>
-                    </button>
-
-                    {/* Gallery / File Button */}
-                    <button
-                      type="button"
-                      onClick={() => galleryInputRefs.current[`act-${index}`]?.click()}
-                      className="flex items-center justify-center gap-2 p-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 transition font-bold text-xs shadow-2xs cursor-pointer"
-                    >
-                      <div className="w-7 h-7 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
-                        <Upload className="w-4 h-4 text-slate-600" />
-                      </div>
-                      <div className="text-left">
-                        <span className="block font-bold text-xs text-slate-900">
-                          Pilih File
-                        </span>
-                        <span className="block text-[10px] text-slate-500 font-normal">
-                          Upload file foto galeri
-                        </span>
-                      </div>
-                    </button>
+                  <button
+                    type="button"
+                    onClick={() => updateLogBookItem(index, { noPhoto: false })}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold transition cursor-pointer shadow-2xs self-start sm:self-auto"
+                    title="Klik di sini jika ingin melampirkan foto / screenshot pada aktivitas ini"
+                  >
+                    <Camera className="w-3.5 h-3.5 text-emerald-700" />
+                    <span>+ Lampirkan Foto</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      <ImageIcon className="w-3.5 h-3.5 text-slate-500" />
+                      Picture or Documentation (Foto / Bukti Kasus)
+                    </span>
+                    <div className="flex items-center gap-2">
+                      {!act.pictureUrl && (
+                        <button
+                          type="button"
+                          onClick={() => updateLogBookItem(index, { noPhoto: true })}
+                          className="text-[11px] text-slate-500 hover:text-slate-800 hover:underline font-semibold cursor-pointer"
+                          title="Ubah ke format list tanpa foto agar lebih hemat ruang cetak"
+                        >
+                          Jadikan List (Tanpa Foto)
+                        </button>
+                      )}
+                      {act.pictureUrl && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDeleteConfirmTarget({
+                              type: 'activity_photo',
+                              index,
+                              title: `Hapus Foto Aktivitas #${act.no}?`,
+                              description: `Apakah Anda yakin ingin menghapus foto dokumentasi untuk aktivitas nomor ${act.no}?`,
+                            });
+                          }}
+                          className="text-[11px] text-red-600 hover:underline font-semibold cursor-pointer"
+                        >
+                          Hapus Foto
+                        </button>
+                      )}
+                    </div>
                   </div>
-                )}
 
-                {/* Hidden input for Camera: capture="environment" */}
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  ref={(el) => {
-                    cameraInputRefs.current[`act-${index}`] = el;
-                  }}
-                  onChange={(e) =>
-                    handleImageUpload(e, (dataUrl) =>
-                      handleLogBookImageChange(index, dataUrl)
-                    )
-                  }
-                  className="hidden"
-                />
+                  {act.pictureUrl ? (
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                      <img
+                        src={act.pictureUrl}
+                        alt="Dokumentasi Kasus"
+                        className="h-28 w-44 object-contain bg-slate-100 rounded-lg border border-slate-200 shadow-xs"
+                      />
+                      <div className="text-xs text-slate-600 space-y-2">
+                        <div>
+                          <p className="text-emerald-700 font-bold flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                            Foto Dokumentasi Terlampir
+                          </p>
+                          <p className="text-[11px] text-slate-500">
+                            Siap dicetak di lembar A4 &amp; otomatis tersimpan ke cloud.
+                          </p>
+                        </div>
 
-                {/* Hidden input for Gallery / Storage File Picker */}
-                <input
-                  type="file"
-                  accept="image/*"
-                  ref={(el) => {
-                    galleryInputRefs.current[`act-${index}`] = el;
-                  }}
-                  onChange={(e) =>
-                    handleImageUpload(e, (dataUrl) =>
-                      handleLogBookImageChange(index, dataUrl)
-                    )
-                  }
-                  className="hidden"
-                />
-              </div>
+                        {/* Change options: Camera, Snipping Tool Paste, or Gallery */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => handlePasteClipboardForActivity(index)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-lg text-xs transition shadow-2xs cursor-pointer"
+                            title="Paste screenshot baru dari Snipping Tool (Ctrl+V)"
+                          >
+                            <Clipboard className="w-3.5 h-3.5" />
+                            <span>Paste Snipping Tool</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setChangePhotoConfirmTarget({
+                                title: `Ganti Foto Aktivitas #${act.no}?`,
+                                description: `Foto dokumentasi untuk aktivitas #${act.no} sudah terlampir. Mengambil foto baru via kamera akan menimpa foto lama. Apakah Anda yakin ingin melanjutkan membuka kamera?`,
+                                actionLabel: 'Ya, Buka Kamera',
+                                sourceType: 'camera',
+                                onConfirm: () => cameraInputRefs.current[`act-${index}`]?.click(),
+                              });
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition shadow-2xs cursor-pointer"
+                          >
+                            <Camera className="w-3.5 h-3.5 text-white" />
+                            Foto Ulang (Kamera)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setChangePhotoConfirmTarget({
+                                title: `Ganti Foto Aktivitas #${act.no}?`,
+                                description: `Foto dokumentasi untuk aktivitas #${act.no} sudah terlampir. Memilih foto baru dari galeri akan menimpa foto lama. Apakah Anda yakin ingin melanjutkan membuka galeri?`,
+                                actionLabel: 'Ya, Buka Galeri',
+                                sourceType: 'gallery',
+                                onConfirm: () => galleryInputRefs.current[`act-${index}`]?.click(),
+                              });
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold transition cursor-pointer"
+                          >
+                            <Upload className="w-3.5 h-3.5 text-slate-600" />
+                            Ganti dari Galeri
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      {/* Paste from Snipping Tool Button */}
+                      <button
+                        type="button"
+                        onClick={() => handlePasteClipboardForActivity(index)}
+                        className="flex items-center justify-center gap-2 p-3 rounded-xl border border-amber-300 bg-amber-50/80 hover:bg-amber-100/90 text-slate-900 transition font-bold text-xs shadow-2xs cursor-pointer"
+                        title="Paste screenshot langsung dari Windows Snipping Tool (atau klik kartu lalu tekan Ctrl+V)"
+                      >
+                        <div className="w-7 h-7 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center shrink-0">
+                          <Clipboard className="w-4 h-4" />
+                        </div>
+                        <div className="text-left">
+                          <span className="block font-bold text-xs text-slate-950">
+                            Paste Snipping Tool
+                          </span>
+                          <span className="block text-[10px] text-amber-900 font-medium">
+                            Bisa klik atau tekan Ctrl+V
+                          </span>
+                        </div>
+                      </button>
+
+                      {/* Live Camera Button (Direct to Phone / Tablet Camera) */}
+                      <button
+                        type="button"
+                        onClick={() => cameraInputRefs.current[`act-${index}`]?.click()}
+                        className="flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-dashed border-emerald-400 bg-emerald-50/50 hover:bg-emerald-50 text-slate-800 transition font-bold text-xs shadow-2xs cursor-pointer"
+                      >
+                        <div className="w-7 h-7 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                          <Camera className="w-4 h-4" />
+                        </div>
+                        <div className="text-left">
+                          <span className="block font-bold text-xs text-slate-900">
+                            Buka Kamera
+                          </span>
+                          <span className="block text-[10px] text-emerald-700 font-medium">
+                            Live foto via kamera HP
+                          </span>
+                        </div>
+                      </button>
+
+                      {/* Gallery / File Button */}
+                      <button
+                        type="button"
+                        onClick={() => galleryInputRefs.current[`act-${index}`]?.click()}
+                        className="flex items-center justify-center gap-2 p-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 transition font-bold text-xs shadow-2xs cursor-pointer"
+                      >
+                        <div className="w-7 h-7 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
+                          <Upload className="w-4 h-4 text-slate-600" />
+                        </div>
+                        <div className="text-left">
+                          <span className="block font-bold text-xs text-slate-900">
+                            Pilih File
+                          </span>
+                          <span className="block text-[10px] text-slate-500 font-normal">
+                            Upload file foto galeri
+                          </span>
+                        </div>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Hidden input for Camera: capture="environment" */}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    ref={(el) => {
+                      cameraInputRefs.current[`act-${index}`] = el;
+                    }}
+                    onChange={(e) =>
+                      handleImageUpload(e, (dataUrl) =>
+                        handleLogBookImageChange(index, dataUrl)
+                      )
+                    }
+                    className="hidden"
+                  />
+
+                  {/* Hidden input for Gallery / Storage File Picker */}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    ref={(el) => {
+                      galleryInputRefs.current[`act-${index}`] = el;
+                    }}
+                    onChange={(e) =>
+                      handleImageUpload(e, (dataUrl) =>
+                        handleLogBookImageChange(index, dataUrl)
+                      )
+                    }
+                    className="hidden"
+                  />
+                </div>
+              )}
             </div>
               );
             })

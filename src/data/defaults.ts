@@ -1,6 +1,6 @@
-import { ChecklistItem, DailyActivityReport, DailyChecklistReport, ServerThresholdSettings } from '../types';
+import { ChecklistItem, DailyActivityReport, DailyChecklistReport, ServerThresholdSettings, RoutineActivityTemplate, LogBookItem } from '../types';
 import { formatReportDate, getTodayDateString } from '../utils/imageUtils';
-import { loadTeamMembers, loadServerThresholds } from './teamMembers';
+import { loadTeamMembers, loadServerThresholds, loadRoutineActivities, getApplicableRoutineActivities } from './teamMembers';
 import {
   SAMPLE_ERTFLIX_IMG,
   SAMPLE_PCCAFE_IMG,
@@ -146,13 +146,56 @@ export function createChecklistFromPrevious(
 
 export function createDefaultActivityReport(
   dateStr?: string,
-  customThresholds?: ServerThresholdSettings
+  customThresholds?: ServerThresholdSettings,
+  customRoutineTemplates?: RoutineActivityTemplate[]
 ): DailyActivityReport {
   const date = dateStr || getTodayDateString();
   const activeMembers = loadTeamMembers().filter((m) => m.isActive);
   const activeThresholds = customThresholds || loadServerThresholds();
   const pickPic = (idx: number) =>
     activeMembers.length > 0 ? activeMembers[idx % activeMembers.length].name : '';
+
+  // Load routine activities for this date (everyday, weekday, weekend)
+  const routineTemplates = customRoutineTemplates || loadRoutineActivities();
+  const applicableRoutines = getApplicableRoutineActivities(routineTemplates, date);
+
+  const initialActivities: LogBookItem[] = [];
+
+  // Add applicable routine activities first as clean list items
+  applicableRoutines.forEach((routine, idx) => {
+    initialActivities.push({
+      id: `act-routine-${routine.id}-${date}`,
+      no: idx + 1,
+      details: routine.details,
+      clientName: routine.clientName || '',
+      clientDepartment: routine.clientDepartment || 'IT (Internal IT)',
+      userClient: routine.clientDepartment || 'IT (Internal IT)',
+      status: routine.defaultStatus || 'Done',
+      pic: pickPic(idx),
+      pictureUrl: '',
+      isRoutine: true,
+      noPhoto: routine.noPhoto ?? true,
+    });
+  });
+
+  // Ensure there is at least 1 ad-hoc empty slot available for custom entries
+  const remainingCount = Math.max(1, 3 - initialActivities.length);
+  const departments = ['FO (Front Office)', 'HK (Housekeeping)', 'Engineering & Maintenance'];
+  for (let i = 0; i < remainingCount; i++) {
+    const currentNo = initialActivities.length + 1;
+    initialActivities.push({
+      id: `act-${currentNo}-${date}`,
+      no: currentNo,
+      details: '',
+      clientName: '',
+      clientDepartment: departments[i % departments.length],
+      userClient: departments[i % departments.length],
+      status: 'Done',
+      pic: pickPic(initialActivities.length),
+      pictureUrl: '',
+      noPhoto: false,
+    });
+  }
 
   return {
     id: date,
@@ -162,41 +205,7 @@ export function createDefaultActivityReport(
     prepared: DEFAULT_PREPARED,
     directReport: DEFAULT_DIRECT_REPORT,
     cc: DEFAULT_CC,
-    logBookActivities: [
-      {
-        id: 'act-1',
-        no: 1,
-        details: '',
-        clientName: '',
-        clientDepartment: 'FO (Front Office)',
-        userClient: 'FO (Front Office)',
-        status: 'Done',
-        pic: pickPic(0),
-        pictureUrl: '',
-      },
-      {
-        id: 'act-2',
-        no: 2,
-        details: '',
-        clientName: '',
-        clientDepartment: 'HK (Housekeeping)',
-        userClient: 'HK (Housekeeping)',
-        status: 'Done',
-        pic: pickPic(1),
-        pictureUrl: '',
-      },
-      {
-        id: 'act-3',
-        no: 3,
-        details: '',
-        clientName: '',
-        clientDepartment: 'Engineering & Maintenance',
-        userClient: 'Engineering & Maintenance',
-        status: 'Done',
-        pic: pickPic(2),
-        pictureUrl: '',
-      },
-    ],
+    logBookActivities: initialActivities,
     saraActivity: {
       enabled: true,
       title: '2. SARA Activity Today',

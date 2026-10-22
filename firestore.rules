@@ -45,10 +45,10 @@ service cloud.firestore {
       allow delete: if true;
     }
 
-    // App Settings (Company Logo, IT PIC Team Members, Client Users, Departments, Server Thresholds)
+    // App Settings (Company Logo, IT PIC Team Members, Client Users, Departments, Server Thresholds, Routine Activities)
     match /app_settings/{settingId} {
       allow read: if true;
-      allow write: if settingId in ['company_logo', 'team_members', 'client_users', 'departments', 'server_thresholds']
+      allow write: if settingId in ['company_logo', 'team_members', 'client_users', 'departments', 'server_thresholds', 'routine_activities']
         && isReasonableSize();
     }
 

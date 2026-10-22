@@ -5,7 +5,9 @@ import {
   TeamMember,
   ClientUser,
   ServerThresholdSettings,
-  WeeklyReport
+  WeeklyReport,
+  RoutineActivityTemplate,
+  LogBookItem
 } from './types';
 import {
   createDefaultActivityReport,
@@ -27,7 +29,12 @@ import {
   getDepartmentsLocalUpdatedAt,
   loadServerThresholds,
   saveServerThresholdsToStorage,
-  getServerThresholdsLocalUpdatedAt
+  getServerThresholdsLocalUpdatedAt,
+  loadRoutineActivities,
+  saveRoutineActivitiesToStorage,
+  getRoutineActivitiesLocalUpdatedAt,
+  getApplicableRoutineActivities,
+  isDateWeekend
 } from './data/teamMembers';
 import {
   getCustomLogo,
@@ -54,6 +61,9 @@ import {
   loadDepartmentsFromCloud,
   saveServerThresholdsToCloud,
   loadServerThresholdsFromCloud,
+  saveRoutineActivitiesToCloud,
+  loadRoutineActivitiesFromCloud,
+  subscribeToRoutineActivities,
   subscribeToServerThresholds,
   subscribeToActivityReport,
   subscribeToChecklistReport,
@@ -83,6 +93,7 @@ import { UserManagementModal } from './components/UserManagementModal';
 import { LogoManagerModal } from './components/LogoManagerModal';
 import { QuotaMonitorModal } from './components/QuotaMonitorModal';
 import { ServerThresholdModal } from './components/ServerThresholdModal';
+import { RoutineActivityManagerModal } from './components/RoutineActivityManagerModal';
 import { DownloadActivityWarningModal, IncompleteActivityItem } from './components/DownloadActivityWarningModal';
 import {
   Download,
@@ -117,9 +128,13 @@ export default function App() {
   const [thresholds, setThresholds] = useState<ServerThresholdSettings>(() => loadServerThresholds());
   const [isThresholdModalOpen, setIsThresholdModalOpen] = useState<boolean>(false);
 
+  // Routine Activity Templates (Daily Routine Tasks without photo e.g. Update Signage, GM Check Laptop)
+  const [routineTemplates, setRoutineTemplates] = useState<RoutineActivityTemplate[]>(() => loadRoutineActivities());
+  const [isRoutineModalOpen, setIsRoutineModalOpen] = useState<boolean>(false);
+
   // Reports
   const [activityReport, setActivityReport] = useState<DailyActivityReport>(() =>
-    createDefaultActivityReport(getTodayDateString())
+    createDefaultActivityReport(getTodayDateString(), loadServerThresholds(), loadRoutineActivities())
   );
   const [checklistReport, setChecklistReport] = useState<DailyChecklistReport>(() =>
     createDefaultChecklistReport(getTodayDateString())
@@ -565,6 +580,92 @@ export default function App() {
     setTimeout(() => setNotification(null), 3500);
   };
 
+  // Save routine activity templates to local storage & cloud
+  const handleSaveRoutineTemplates = (updated: RoutineActivityTemplate[]) => {
+    const now = Date.now();
+    setRoutineTemplates(updated);
+    saveRoutineActivitiesToStorage(updated, now);
+    saveRoutineActivitiesToCloud(updated, now).catch(console.error);
+
+    setNotification('✓ Daftar template aktivitas rutin berhasil diperbarui.');
+    setTimeout(() => setNotification(null), 3500);
+  };
+
+  // Apply routine activity templates to current active report (without wiping custom user items)
+  const handleApplyRoutineToCurrentReport = () => {
+    const applicable = getApplicableRoutineActivities(routineTemplates, activityReport.date);
+    if (applicable.length === 0) {
+      setNotification('Tidak ada template aktivitas rutin untuk jadwal tanggal ini.');
+      setTimeout(() => setNotification(null), 3500);
+      return;
+    }
+
+    const now = Date.now();
+    setActivityReport((prev) => {
+      const activeMembers = teamMembers.filter((m) => m.isActive);
+      const pickPic = (idx: number) =>
+        activeMembers.length > 0 ? activeMembers[idx % activeMembers.length].name : '';
+
+      const currentActivities = [...prev.logBookActivities];
+      let addedCount = 0;
+
+      applicable.forEach((template, tIdx) => {
+        // Check if already present by exact details
+        const exists = currentActivities.some(
+          (act) => act.details.trim().toLowerCase() === template.details.trim().toLowerCase()
+        );
+        if (!exists) {
+          // Find first empty activity slot or append
+          const emptyIdx = currentActivities.findIndex(
+            (act) => !act.details?.trim() && !act.pictureUrl?.trim()
+          );
+
+          const newNo = emptyIdx !== -1 ? emptyIdx + 1 : currentActivities.length + 1;
+          const newItem: LogBookItem = {
+            id: `act-routine-${template.id}-${Date.now()}-${tIdx}`,
+            no: newNo,
+            details: template.details,
+            clientName: template.clientName || '',
+            clientDepartment: template.clientDepartment || 'IT (Internal IT)',
+            userClient: template.clientDepartment || 'IT (Internal IT)',
+            status: template.defaultStatus || 'Done',
+            pic: pickPic(tIdx),
+            pictureUrl: '',
+            isRoutine: true,
+            noPhoto: template.noPhoto ?? true,
+          };
+
+          if (emptyIdx !== -1) {
+            currentActivities[emptyIdx] = newItem;
+          } else {
+            currentActivities.push(newItem);
+          }
+          addedCount++;
+        }
+      });
+
+      // Re-number sequentially
+      const renumbered = currentActivities.map((act, i) => ({ ...act, no: i + 1 }));
+      const updatedRep: DailyActivityReport = {
+        ...prev,
+        logBookActivities: renumbered,
+        isUserModified: true,
+        updatedAt: now,
+      };
+
+      latestActRef.current = updatedRep;
+      saveActivityReportLocalImmediate(updatedRep);
+      saveActivityReport(updatedRep).catch(console.error);
+
+      setNotification(
+        `✓ ${addedCount} aktivitas rutin (${isDateWeekend(prev.date) ? 'Weekend' : 'Weekday'}) diterapkan ke form.`
+      );
+      setTimeout(() => setNotification(null), 3500);
+
+      return updatedRep;
+    });
+  };
+
   // Wrapper for Daily Activity edits: marks as user-modified, updates state, ref, and immediate local storage
   const handleActivityChange = useCallback((updated: DailyActivityReport) => {
     const nextReport: DailyActivityReport = {
@@ -807,6 +908,26 @@ export default function App() {
       }
     });
 
+    // Initial check if cloud has synced routine activities
+    loadRoutineActivitiesFromCloud().then((cloudData) => {
+      if (cloudData && Array.isArray(cloudData.templates) && cloudData.templates.length > 0) {
+        const localUpdated = getRoutineActivitiesLocalUpdatedAt();
+        if (cloudData.updatedAt > localUpdated) {
+          setRoutineTemplates(cloudData.templates);
+          saveRoutineActivitiesToStorage(cloudData.templates, cloudData.updatedAt);
+        }
+      }
+    });
+
+    // Real-time listener for routine activities
+    const unsubRoutines = subscribeToRoutineActivities((routinesData, updatedAt) => {
+      const localUpdated = getRoutineActivitiesLocalUpdatedAt();
+      if (updatedAt > localUpdated) {
+        setRoutineTemplates(routinesData);
+        saveRoutineActivitiesToStorage(routinesData, updatedAt);
+      }
+    });
+
     runAutoCleanupExpiredRecords().then((res) => {
       const total = res.deletedActivities + res.deletedChecklists;
       if (total > 0) {
@@ -821,6 +942,7 @@ export default function App() {
       unsubTeam();
       unsubClients();
       unsubThresholds();
+      unsubRoutines();
     };
   }, [handleCheckDbConnection]);
 
@@ -941,13 +1063,13 @@ export default function App() {
             loadedAct.logBookActivities.length === 4 &&
             loadedAct.logBookActivities[0]?.details === 'Speedtest at dian ballroom';
           if (isMockSample) {
-            finalAct = createDefaultActivityReport(selectedDate);
+            finalAct = createDefaultActivityReport(selectedDate, thresholds, routineTemplates);
             shouldSnapshotActivity = true;
           } else {
             finalAct = loadedAct;
           }
         } else {
-          finalAct = createDefaultActivityReport(selectedDate);
+          finalAct = createDefaultActivityReport(selectedDate, thresholds, routineTemplates);
           shouldSnapshotActivity = true;
         }
 
@@ -1622,6 +1744,8 @@ export default function App() {
                 onAutoSaveActivity={handleAutoSaveActivity}
                 thresholds={thresholds}
                 onOpenThresholdModal={() => setIsThresholdModalOpen(true)}
+                routineTemplates={routineTemplates}
+                onOpenRoutineModal={() => setIsRoutineModalOpen(true)}
               />
             ) : activeTab === 'checklist' ? (
               <DailyChecklistForm
@@ -1859,6 +1983,17 @@ export default function App() {
         onClose={() => setIsThresholdModalOpen(false)}
         thresholds={thresholds}
         onSaveThresholds={handleSaveThresholds}
+      />
+
+      {/* Routine Activities Template Manager Modal (Default Daily Non-Photo List Tasks) */}
+      <RoutineActivityManagerModal
+        isOpen={isRoutineModalOpen}
+        onClose={() => setIsRoutineModalOpen(false)}
+        templates={routineTemplates}
+        onUpdateTemplates={handleSaveRoutineTemplates}
+        departments={departments}
+        currentDate={activityReport.date}
+        onApplyToCurrentReport={handleApplyRoutineToCurrentReport}
       />
 
       {/* Warning Modal Before Download / Print if Activities are Incomplete */}

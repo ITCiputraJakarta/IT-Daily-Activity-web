@@ -152,14 +152,14 @@ export const DailyActivityPrintView: React.FC<Props> = ({
                       </td>
                     </tr>
 
-                    {/* Picture / Documentation Section */}
-                    <tr className="border-b border-slate-300 bg-white">
-                      <td colSpan={5} className="p-2 pl-3">
-                        <div className="text-[10px] font-bold text-slate-600 mb-1 flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
-                          Picture or Documentation:
-                        </div>
-                        {act.pictureUrl ? (
+                    {/* Picture / Documentation Section - Only rendered if a photo is attached, keeping list tasks clean & compact */}
+                    {act.pictureUrl ? (
+                      <tr className="border-b border-slate-300 bg-white">
+                        <td colSpan={5} className="p-2 pl-3">
+                          <div className="text-[10px] font-bold text-slate-600 mb-1 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+                            Picture or Documentation:
+                          </div>
                           <div className="flex justify-center items-center py-1 bg-slate-50/50 rounded border border-slate-100">
                             <img
                               src={act.pictureUrl}
@@ -167,13 +167,9 @@ export const DailyActivityPrintView: React.FC<Props> = ({
                               className="max-h-28 max-w-[260px] object-contain rounded-md border border-slate-200 shadow-xs"
                             />
                           </div>
-                        ) : (
-                          <div className="h-6 flex items-center text-[10px] text-slate-400 italic">
-                            - Tidak ada dokumentasi foto terlampir -
-                          </div>
-                        )}
-                      </td>
-                    </tr>
+                        </td>
+                      </tr>
+                    ) : null}
                   </React.Fragment>
                 ))
               ) : (

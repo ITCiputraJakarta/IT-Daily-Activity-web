@@ -13,6 +13,20 @@ export interface ClientUser {
   isActive: boolean;
 }
 
+export type RoutineSchedule = 'everyday' | 'weekday' | 'weekend';
+
+export interface RoutineActivityTemplate {
+  id: string;
+  details: string; // e.g. "Update Digital Signage", "GM Check Laptop"
+  clientName?: string; // e.g. "Public Area", "General Manager"
+  clientDepartment: string; // e.g. "Sales & Marketing", "Executive Office / GM"
+  schedule: RoutineSchedule; // 'everyday' | 'weekday' | 'weekend'
+  defaultStatus: 'Done' | 'Pending' | 'In Progress' | 'Cancelled';
+  noPhoto?: boolean; // true = list item without photo documentation
+  isActive: boolean;
+  order?: number;
+}
+
 export interface LogBookItem {
   id: string;
   no: number;
@@ -24,6 +38,8 @@ export interface LogBookItem {
   pic: string; // Petugas IT (nama saja, misal: Ramdhani, Bagas, VELO)
   pictureUrl?: string;
   pictureCaption?: string;
+  isRoutine?: boolean; // true if this activity came from routine template
+  noPhoto?: boolean; // true if displayed in list form without photo requirement
 }
 
 export interface SaraActivity {

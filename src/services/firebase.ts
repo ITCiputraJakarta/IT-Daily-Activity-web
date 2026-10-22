@@ -17,7 +17,7 @@ import {
   limit,
   onSnapshot
 } from 'firebase/firestore';
-import { DailyActivityReport, DailyChecklistReport, TeamMember, ClientUser, ServerThresholdSettings, WeeklyReport } from '../types';
+import { DailyActivityReport, DailyChecklistReport, TeamMember, ClientUser, ServerThresholdSettings, WeeklyReport, RoutineActivityTemplate } from '../types';
 import {
   createChecklistFromPrevious,
   isChecklistCustomModified,
@@ -1266,6 +1266,83 @@ export function subscribeToAppLogo(
     );
   } catch (err) {
     console.warn('Failed to set up app logo listener:', err);
+    return () => {};
+  }
+}
+
+/**
+ * Save Routine Activities templates to Firestore
+ */
+export async function saveRoutineActivitiesToCloud(
+  templates: RoutineActivityTemplate[],
+  updatedAt = Date.now()
+): Promise<void> {
+  if (!db) return;
+  try {
+    const docRef = doc(db, 'app_settings', 'routine_activities');
+    await setDoc(docRef, sanitizeForFirestore({
+      templates,
+      updatedAt,
+    }));
+    recordFirebaseWrite();
+  } catch (err) {
+    console.warn('Could not save routine activities to Firestore:', err);
+  }
+}
+
+/**
+ * Load Routine Activities templates from Firestore
+ */
+export async function loadRoutineActivitiesFromCloud(): Promise<{
+  templates: RoutineActivityTemplate[];
+  updatedAt: number;
+} | null> {
+  if (!db) return null;
+  try {
+    const docRef = doc(db, 'app_settings', 'routine_activities');
+    const snap = await getDoc(docRef);
+    recordFirebaseRead();
+    if (snap.exists()) {
+      const data = snap.data();
+      if (Array.isArray(data?.templates)) {
+        return {
+          templates: data.templates as RoutineActivityTemplate[],
+          updatedAt: typeof data.updatedAt === 'number' ? data.updatedAt : 0,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('Could not load routine activities from Firestore:', err);
+  }
+  return null;
+}
+
+/**
+ * Subscribe in real-time to Routine Activities templates
+ */
+export function subscribeToRoutineActivities(
+  onUpdate: (templates: RoutineActivityTemplate[], updatedAt: number) => void
+): () => void {
+  if (!db) return () => {};
+  try {
+    const docRef = doc(db, 'app_settings', 'routine_activities');
+    return onSnapshot(
+      docRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          if (Array.isArray(data?.templates)) {
+            onUpdate(
+              data.templates as RoutineActivityTemplate[],
+              typeof data.updatedAt === 'number' ? data.updatedAt : 0
+            );
+          }
+        }
+      },
+      (err) => console.warn('Routine activities realtime listener warning:', err)
+    );
+  } catch (err) {
+    console.warn('Failed to set up routine activities listener:', err);
     return () => {};
   }
 }

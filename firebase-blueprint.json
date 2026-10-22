@@ -75,7 +75,7 @@
     },
     "/app_settings/{settingId}": {
       "schema": "AppSettings",
-      "description": "Stores logo, team members, client users, departments, and thresholds"
+      "description": "Stores logo, team members, client users, departments, thresholds, and routine activities"
     }
   }
 }
