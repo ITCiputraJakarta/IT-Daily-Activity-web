@@ -8,6 +8,7 @@ import {
   POPULAR_AP_TYPES,
   recalculateApMonitoring,
 } from '../data/weeklyDefaults';
+import { refineWeeklyHighlightsWithBot, formatSingleHighlightToEnglish } from '../services/highlightBotService';
 import { ImageUploadDropzone } from './ImageUploadDropzone';
 import {
   Calendar,
@@ -30,7 +31,9 @@ import {
   FileText,
   UserCheck,
   Building,
-  HardDrive
+  HardDrive,
+  Bot,
+  Wand2
 } from 'lucide-react';
 
 interface Props {
@@ -48,6 +51,8 @@ export const WeeklyReportForm: React.FC<Props> = ({
   isSaving,
 }) => {
   const [isPullingDaily, setIsPullingDaily] = useState<boolean>(false);
+  const [isRefiningBot, setIsRefiningBot] = useState<boolean>(false);
+  const [autoBotEnglish, setAutoBotEnglish] = useState<boolean>(true);
   const [pullFeedback, setPullFeedback] = useState<string | null>(null);
   const [includeDeptInfo, setIncludeDeptInfo] = useState<boolean>(false);
   const [highlightSearch, setHighlightSearch] = useState<string>('');
@@ -100,8 +105,17 @@ export const WeeklyReportForm: React.FC<Props> = ({
     try {
       const result = await pullHighlightsFromDailyActivities(report.startDate, report.endDate, includeDeptInfo);
       if (result.totalFound > 0) {
-        updateField('weeklyHighlights', result.items);
-        setPullFeedback(`✓ Sukses! Berhasil menarik ${result.totalFound} aktivitas dari ${result.daysChecked} hari Daily Activity.`);
+        if (autoBotEnglish) {
+          setPullFeedback(`Ditemukan ${result.totalFound} aktivitas. Bot sedang merapikan tata bahasa & menerjemahkan ke English inti (Opsi 1)...`);
+          const botResult = await refineWeeklyHighlightsWithBot(result.items);
+          updateField('weeklyHighlights', botResult.items);
+          setPullFeedback(
+            `✓ Sukses! Berhasil menarik & merapikan ${botResult.totalRefined} poin highlight dalam Bahasa Inggris (${botResult.duplicatesRemoved} duplikat dibersihkan).`
+          );
+        } else {
+          updateField('weeklyHighlights', result.items);
+          setPullFeedback(`✓ Sukses! Berhasil menarik ${result.totalFound} aktivitas dari ${result.daysChecked} hari Daily Activity.`);
+        }
       } else {
         setPullFeedback(`⚠️ Tidak ditemukan aktivitas terisi pada rentang ${report.startDate} s/d ${report.endDate}. Pastikan Daily Activity pada tanggal-tanggal tersebut sudah disimpan.`);
       }
@@ -110,7 +124,40 @@ export const WeeklyReportForm: React.FC<Props> = ({
       setPullFeedback('Gagal mengambil daily activity: ' + (err.message || 'Error'));
     } finally {
       setIsPullingDaily(false);
-      setTimeout(() => setPullFeedback(null), 6000);
+      setTimeout(() => setPullFeedback(null), 8000);
+    }
+  };
+
+  // Bot refine highlights (Opsi 1: Bahasa Inggris inti saja & tanpa duplikat)
+  const handleBotRefineHighlights = async () => {
+    const currentList = report.weeklyHighlights || [];
+    if (currentList.length === 0) {
+      setPullFeedback('⚠️ Belum ada poin highlight untuk dirapikan. Silakan tambah poin atau ambil dari Daily Activity.');
+      return;
+    }
+    setIsRefiningBot(true);
+    setPullFeedback('🤖 Bot sedang merapikan tata bahasa, menghapus duplikat, dan menerjemahkan ke Bahasa Inggris inti...');
+    try {
+      const botResult = await refineWeeklyHighlightsWithBot(currentList);
+      updateField('weeklyHighlights', botResult.items);
+      setPullFeedback(
+        `✓ Bot selesai merapikan: ${botResult.totalRefined} poin tersimpan dalam Bahasa Inggris (${botResult.duplicatesRemoved} tugas duplikat dibersihkan).`
+      );
+    } catch (err: any) {
+      setPullFeedback('Gagal merapikan highlight: ' + (err?.message || 'Error'));
+    } finally {
+      setIsRefiningBot(false);
+      setTimeout(() => setPullFeedback(null), 8000);
+    }
+  };
+
+  // Bot fix single highlight item
+  const handleFixSingleItem = (index: number) => {
+    const list = [...(report.weeklyHighlights || [])];
+    if (index >= 0 && index < list.length) {
+      const fixed = formatSingleHighlightToEnglish(list[index].text);
+      list[index] = { ...list[index], text: fixed };
+      updateField('weeklyHighlights', list);
     }
   };
 
@@ -474,11 +521,11 @@ export const WeeklyReportForm: React.FC<Props> = ({
                 </span>
               </div>
               <p className="text-[11px] text-slate-600 mt-1">
-                Daftar poin pencapaian utama IT minggu ini. Dapat diambil otomatis dari <strong>Daily Activity</strong> atau diketik manual.
+                Daftar poin pencapaian utama IT minggu ini. <strong>Opsi 1 Bot:</strong> otomatis memperbaiki tata bahasa, merangkum inti saja, menghapus tugas duplikat harian, dan selalu dalam Bahasa Inggris.
               </p>
             </div>
 
-            {/* Sync Button */}
+            {/* Sync & Bot Controls */}
             <div className="flex items-center gap-2 flex-wrap">
               <label className="flex items-center gap-1.5 text-[11px] text-slate-600 font-semibold cursor-pointer select-none">
                 <input
@@ -490,14 +537,36 @@ export const WeeklyReportForm: React.FC<Props> = ({
                 <span>Sertakan Dept/User</span>
               </label>
 
+              <label className="flex items-center gap-1.5 text-[11px] text-indigo-700 font-bold bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2 py-1 rounded-lg cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={autoBotEnglish}
+                  onChange={(e) => setAutoBotEnglish(e.target.checked)}
+                  className="rounded text-indigo-600 focus:ring-indigo-500"
+                />
+                <Bot className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Bot Auto English (Inti Saja)</span>
+              </label>
+
               <button
                 type="button"
                 onClick={handlePullDailyHighlights}
-                disabled={isPullingDaily}
+                disabled={isPullingDaily || isRefiningBot}
                 className="inline-flex items-center gap-1.5 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl text-xs font-extrabold transition shadow-xs cursor-pointer disabled:opacity-50"
               >
                 <Sparkles className={`w-4 h-4 ${isPullingDaily ? 'animate-spin' : ''}`} />
                 <span>{isPullingDaily ? 'Memindai Daily Activity...' : 'Ambil dari Daily Activity'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleBotRefineHighlights}
+                disabled={isRefiningBot || isPullingDaily || (report.weeklyHighlights || []).length === 0}
+                className="inline-flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-extrabold transition shadow-xs cursor-pointer disabled:opacity-50"
+                title="Opsi 1: Perbaiki tata bahasa, hapus duplikat harian, dan selalu Bahasa Inggris inti saja"
+              >
+                <Bot className={`w-4 h-4 ${isRefiningBot ? 'animate-spin' : ''}`} />
+                <span>{isRefiningBot ? 'Bot Merapikan...' : 'Bot Rapikan (English Inti)'}</span>
               </button>
 
               <button
@@ -567,6 +636,14 @@ export const WeeklyReportForm: React.FC<Props> = ({
                   </div>
 
                   <div className="flex items-center gap-1 shrink-0 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleFixSingleItem(index)}
+                      title="Bot perbaiki poin ini ke English inti"
+                      className="p-1 rounded text-indigo-600 hover:bg-indigo-50 cursor-pointer"
+                    >
+                      <Wand2 className="w-3.5 h-3.5" />
+                    </button>
                     <button
                       type="button"
                       onClick={() => moveHighlightItem(index, 'up')}
