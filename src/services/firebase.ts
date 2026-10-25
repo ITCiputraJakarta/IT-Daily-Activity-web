@@ -1,4 +1,5 @@
 import { initializeApp, getApps } from 'firebase/app';
+import { getAuth, Auth } from 'firebase/auth';
 import {
   getFirestore,
   initializeFirestore,
@@ -51,6 +52,8 @@ const app = isFirebaseConfigured
   ? (getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0])
   : null;
 
+export const auth: Auth | null = app ? getAuth(app) : null;
+
 // Initialize Firestore with persistent multi-tab local cache and ignoreUndefinedProperties
 let firestoreDb: ReturnType<typeof getFirestore>;
 if (app) {
@@ -93,6 +96,65 @@ if (app) {
   firestoreDb = null as unknown as ReturnType<typeof getFirestore>;
 }
 export const db = firestoreDb;
+
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  };
+}
+
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth?.currentUser?.uid,
+      email: auth?.currentUser?.email,
+      emailVerified: auth?.currentUser?.emailVerified,
+      isAnonymous: auth?.currentUser?.isAnonymous,
+      tenantId: auth?.currentUser?.tenantId,
+      providerInfo: auth?.currentUser?.providerData?.map(provider => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || []
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
+export async function testConnection() {
+  if (!db) return;
+  try {
+    await getDocFromServer(doc(db, 'test', 'connection'));
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.error("Please check your Firebase configuration.");
+    }
+  }
+}
+testConnection();
 
 export const COLLECTION_ACTIVITIES = 'daily_activities';
 export const COLLECTION_CHECKLISTS = 'daily_checklists';
@@ -376,7 +438,10 @@ export async function saveActivityReport(report: DailyActivityReport): Promise<{
     recordFirebaseWrite(1, 'Simpan Daily Activity');
     return { success: true };
   } catch (error) {
-    console.error('Firestore saveActivityReport error, using local fallback:', error);
+    if (error instanceof Error && (error.message.includes('permission') || error.message.includes('insufficient'))) {
+      handleFirestoreError(error, OperationType.WRITE, `${COLLECTION_ACTIVITIES}/${report.date}`);
+    }
+    console.warn('Firestore saveActivityReport warning, using local fallback:', error);
     return { success: true, isLocalFallback: true };
   }
 }
@@ -502,7 +567,10 @@ export async function saveChecklistReport(report: DailyChecklistReport): Promise
     recordFirebaseWrite(1 + propagatedDates.length, 'Simpan Daily Checklist');
     return { success: true };
   } catch (error) {
-    console.error('Firestore saveChecklistReport error, using local fallback:', error);
+    if (error instanceof Error && (error.message.includes('permission') || error.message.includes('insufficient'))) {
+      handleFirestoreError(error, OperationType.WRITE, `${COLLECTION_CHECKLISTS}/${report.date}`);
+    }
+    console.warn('Firestore saveChecklistReport warning, using local fallback:', error);
     return { success: true, isLocalFallback: true };
   }
 }
@@ -608,7 +676,10 @@ export async function saveWeeklyReport(report: WeeklyReport): Promise<{ success:
     recordFirebaseWrite(1, 'Simpan Weekly Report');
     return { success: true };
   } catch (error) {
-    console.error('Firestore saveWeeklyReport error, using local fallback:', error);
+    if (error instanceof Error && (error.message.includes('permission') || error.message.includes('insufficient'))) {
+      handleFirestoreError(error, OperationType.WRITE, `${COLLECTION_WEEKLY}/${report.id}`);
+    }
+    console.warn('Firestore saveWeeklyReport warning, using local fallback:', error);
     return { success: true, isLocalFallback: true };
   }
 }

@@ -57,6 +57,11 @@ service cloud.firestore {
       allow read, write: if docId == 'ping';
     }
 
+    // Connection test document (Firebase Skill)
+    match /test/{docId} {
+      allow read: if true;
+    }
+
     // Lock down all other document paths by default for security
     match /{document=**} {
       allow read, write: if false;
