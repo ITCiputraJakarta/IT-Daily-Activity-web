@@ -26,7 +26,10 @@ import {
   Image as ImageIcon,
   HardDrive,
   Layers,
-  Thermometer
+  Thermometer,
+  ShieldCheck,
+  LogOut,
+  User as UserIcon
 } from 'lucide-react';
 import {
   getQuotaStats,
@@ -34,6 +37,7 @@ import {
   QuotaDailyStats,
   estimateCurrentStorage
 } from '../services/quotaTracker';
+import { AuthUser } from '../services/authService';
 
 interface Props {
   activeTab: 'activity' | 'checklist' | 'wareport' | 'weekly';
@@ -60,6 +64,9 @@ interface Props {
   isDbOnline: boolean;
   onCheckDb: () => void;
   checklistTaskCount: number;
+  currentUser?: AuthUser | null;
+  onLogout?: () => void;
+  onOpenSecurityModal?: () => void;
 }
 
 export const Navbar: React.FC<Props> = ({
@@ -87,6 +94,9 @@ export const Navbar: React.FC<Props> = ({
   isDbOnline,
   onCheckDb,
   checklistTaskCount,
+  currentUser,
+  onLogout,
+  onOpenSecurityModal,
 }) => {
   const [quotaStats, setQuotaStats] = useState<QuotaDailyStats>(getQuotaStats());
   const [storageInfo, setStorageInfo] = useState(estimateCurrentStorage());
@@ -644,6 +654,56 @@ export const Navbar: React.FC<Props> = ({
                       </span>
                     </div>
                   </button>
+
+                  <div className="my-1 border-t border-slate-100"></div>
+
+                  {currentUser && (
+                    <div className="px-3 py-2 bg-emerald-50 rounded-lg mx-1 mb-1 border border-emerald-200">
+                      <div className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">
+                        Masuk Sebagai:
+                      </div>
+                      <div className="text-xs font-bold text-slate-900 truncate">
+                        {currentUser.name}
+                      </div>
+                      <div className="text-[10px] font-mono text-emerald-700 truncate">
+                        {currentUser.email}
+                      </div>
+                    </div>
+                  )}
+
+                  {onOpenSecurityModal && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMenuOpen(false);
+                        onOpenSecurityModal();
+                      }}
+                      className="w-full px-3 py-2 text-left text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition cursor-pointer font-medium"
+                    >
+                      <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <div>
+                        <span className="block font-bold text-slate-900">21 Standar Keamanan</span>
+                        <span className="block text-[10px] text-slate-500">Kepatuhan &amp; Audit Log</span>
+                      </div>
+                    </button>
+                  )}
+
+                  {onLogout && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMenuOpen(false);
+                        onLogout();
+                      }}
+                      className="w-full px-3 py-2 text-left text-red-600 hover:bg-red-50 flex items-center gap-2.5 transition cursor-pointer font-medium"
+                    >
+                      <LogOut className="w-4 h-4 text-red-500 shrink-0" />
+                      <div>
+                        <span className="block font-bold text-red-700">Keluar (Logout)</span>
+                        <span className="block text-[10px] text-red-500">Akhiri sesi login aman</span>
+                      </div>
+                    </button>
+                  )}
                 </div>
               )}
             </div>

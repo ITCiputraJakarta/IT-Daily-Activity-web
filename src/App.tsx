@@ -95,6 +95,14 @@ import { QuotaMonitorModal } from './components/QuotaMonitorModal';
 import { ServerThresholdModal } from './components/ServerThresholdModal';
 import { RoutineActivityManagerModal } from './components/RoutineActivityManagerModal';
 import { DownloadActivityWarningModal, IncompleteActivityItem } from './components/DownloadActivityWarningModal';
+import { LoginPage } from './components/LoginPage';
+import { SecurityComplianceModal } from './components/SecurityComplianceModal';
+import {
+  getActiveSession,
+  logoutUser,
+  AuthUser,
+  AuthSession
+} from './services/authService';
 import {
   Download,
   CheckCircle,
@@ -106,6 +114,12 @@ import {
 } from 'lucide-react';
 
 export default function App() {
+  // Authentication & 21 Security Standards State
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+  const [authSession, setAuthSession] = useState<AuthSession | null>(null);
+  const [isAuthChecking, setIsAuthChecking] = useState<boolean>(true);
+  const [isSecurityModalOpen, setIsSecurityModalOpen] = useState<boolean>(false);
+
   const [selectedDate, setSelectedDate] = useState<string>(getTodayDateString());
   const [activeTab, setActiveTab] = useState<'activity' | 'checklist' | 'wareport' | 'weekly'>('activity');
   const [viewMode, setViewMode] = useState<'edit' | 'preview'>('edit');
@@ -164,6 +178,59 @@ export default function App() {
   const actPage1Ref = useRef<HTMLDivElement | null>(null);
   const actPage2Ref = useRef<HTMLDivElement | null>(null);
   const checklistPageRef = useRef<HTMLDivElement | null>(null);
+
+  // Check active session on initial load
+  useEffect(() => {
+    try {
+      const { user, session } = getActiveSession();
+      if (user && session) {
+        setCurrentUser(user);
+        setAuthSession(session);
+      }
+    } catch (e) {
+      console.error('Session retrieval error:', e);
+    } finally {
+      setIsAuthChecking(false);
+    }
+  }, []);
+
+  // Idle timeout auto-lockout (Standard 12: 45 minutes idle protection)
+  useEffect(() => {
+    if (!currentUser) return;
+    let idleTimer: any;
+    const IDLE_LIMIT_MS = 45 * 60 * 1000; // 45 minutes
+
+    const resetIdleTimer = () => {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        logoutUser('Auto-logout karena inaktivitas selama 45 menit (Idle Timeout Protection)');
+        setCurrentUser(null);
+        setAuthSession(null);
+      }, IDLE_LIMIT_MS);
+    };
+
+    const events = ['mousemove', 'keydown', 'mousedown', 'touchstart', 'scroll'];
+    events.forEach((ev) => window.addEventListener(ev, resetIdleTimer, { passive: true }));
+    resetIdleTimer();
+
+    return () => {
+      clearTimeout(idleTimer);
+      events.forEach((ev) => window.removeEventListener(ev, resetIdleTimer));
+    };
+  }, [currentUser]);
+
+  const handleLoginSuccess = (user: AuthUser, session: AuthSession) => {
+    setCurrentUser(user);
+    setAuthSession(session);
+  };
+
+  const handleLogout = () => {
+    if (window.confirm('Apakah Anda yakin ingin keluar (logout) dari sistem IT Hotel Ciputra?')) {
+      logoutUser('Logout manual oleh pengguna');
+      setCurrentUser(null);
+      setAuthSession(null);
+    }
+  };
 
   // References for Weekly Report 7 A4 pages
   const weeklyPage1Ref = useRef<HTMLDivElement | null>(null);
@@ -1744,6 +1811,31 @@ export default function App() {
     }
   };
 
+  // Render loading while checking active session
+  if (isAuthChecking) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-300 p-4">
+        <div className="w-12 h-12 rounded-full border-3 border-emerald-500 border-t-transparent animate-spin mb-3"></div>
+        <span className="text-xs font-bold text-white tracking-wider uppercase">
+          Hotel Ciputra Jakarta IT System
+        </span>
+        <span className="text-[11px] text-emerald-400 mt-1 font-mono">
+          Memverifikasi Enkripsi &amp; Sesi Aktif...
+        </span>
+      </div>
+    );
+  }
+
+  // Render Login Page if not authenticated (Protected Gate)
+  if (!currentUser || !authSession) {
+    return (
+      <LoginPage
+        onLoginSuccess={handleLoginSuccess}
+        customLogoUrl={customLogoUrl}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800 flex flex-col font-sans">
       {/* Top Navbar */}
@@ -1781,6 +1873,9 @@ export default function App() {
           handleCheckDbConnection(true);
         }}
         checklistTaskCount={checklistReport.items.length}
+        currentUser={currentUser}
+        onLogout={handleLogout}
+        onOpenSecurityModal={() => setIsSecurityModalOpen(true)}
       />
 
       {/* Main Container - Tidy & Compact without pushing down */}
@@ -2103,6 +2198,12 @@ export default function App() {
         onJumpToActivity={handleJumpToActivityFromWarning}
         isPrintAction={pendingWarningAction === 'print'}
         incompleteItems={activityWarningItems}
+      />
+
+      {/* 21 Security Standards & Audit Log Modal */}
+      <SecurityComplianceModal
+        isOpen={isSecurityModalOpen}
+        onClose={() => setIsSecurityModalOpen(false)}
       />
     </div>
   );
