@@ -976,20 +976,57 @@ export async function getSavedReportDates(): Promise<{ activityDates: string[]; 
 /**
  * Save custom logo to Firestore so all devices/users share the exact same branding
  */
-export async function saveAppLogoToCloud(logoUrl: string | null): Promise<void> {
-  if (!db) return;
+export async function saveAppLogoToCloud(
+  logoUrl: string | null
+): Promise<{ success: boolean; isOnline: boolean; error?: string }> {
+  const cleanLogo = logoUrl?.trim() || '';
+  if (!db) {
+    if (cleanLogo) {
+      safeSetLocalStorage('hcj_it_custom_logo_v1', cleanLogo);
+    } else {
+      try {
+        localStorage.removeItem('hcj_it_custom_logo_v1');
+      } catch {}
+    }
+    return {
+      success: true,
+      isOnline: false,
+      error: 'Mode Offline (tersimpan di cadangan lokal)',
+    };
+  }
+
   try {
     const logoDocRef = doc(db, 'app_settings', 'company_logo');
     await setDoc(
       logoDocRef,
       {
-        logoUrl: logoUrl || '',
+        logoUrl: cleanLogo,
         updatedAt: Date.now(),
       },
       { merge: true }
     );
-  } catch (err) {
+    recordFirebaseWrite(1, cleanLogo ? 'Simpan Logo Aplikasi' : 'Reset Logo Aplikasi');
+
+    // Also update local cache
+    if (cleanLogo) {
+      safeSetLocalStorage('hcj_it_custom_logo_v1', cleanLogo);
+    } else {
+      try {
+        localStorage.removeItem('hcj_it_custom_logo_v1');
+      } catch {}
+    }
+
+    return { success: true, isOnline: true };
+  } catch (err: any) {
     console.warn('Could not save logo to Firestore:', err);
+    if (cleanLogo) {
+      safeSetLocalStorage('hcj_it_custom_logo_v1', cleanLogo);
+    }
+    return {
+      success: false,
+      isOnline: false,
+      error: err?.message || 'Gagal menyimpan ke Firestore',
+    };
   }
 }
 
@@ -1002,8 +1039,10 @@ export async function loadAppLogoFromCloud(): Promise<string | null> {
     const logoDocRef = doc(db, 'app_settings', 'company_logo');
     const snap = await getDoc(logoDocRef);
     if (snap.exists()) {
+      recordFirebaseRead(1, 'Baca Logo Aplikasi');
       const data = snap.data();
-      return data?.logoUrl || null;
+      const cloudUrl = data?.logoUrl?.trim() ? data.logoUrl : null;
+      return cloudUrl;
     }
   } catch (err) {
     console.warn('Could not load logo from Firestore:', err);
@@ -1354,8 +1393,10 @@ export function subscribeToAppLogo(
       docRef,
       (snapshot) => {
         if (snapshot.exists()) {
+          recordFirebaseRead(1, 'Realtime Sync Logo');
           const data = snapshot.data();
-          onUpdate(data?.logoUrl || null);
+          const cloudLogo = data?.logoUrl?.trim() ? data.logoUrl : null;
+          onUpdate(cloudLogo);
         }
       },
       (err) => console.warn('App logo realtime listener warning:', err)

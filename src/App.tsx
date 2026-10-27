@@ -916,19 +916,34 @@ export default function App() {
   }, []);
 
   // Save/Update logo handler with Cloud & Local storage sync
-  const handleSaveLogo = (newLogoUrl: string | null) => {
-    if (newLogoUrl) {
-      saveCustomLogo(newLogoUrl);
-      saveAppLogoToCloud(newLogoUrl);
-      setCustomLogoUrl(newLogoUrl);
-      setNotification('Logo kustom berhasil diterapkan di form, preview, dan cetak PDF.');
-    } else {
-      removeCustomLogo();
-      saveAppLogoToCloud(null);
-      setCustomLogoUrl(null);
-      setNotification('Logo dikembalikan ke default Hotel Ciputra Jakarta.');
+  const handleSaveLogo = async (
+    newLogoUrl: string | null
+  ): Promise<{ success: boolean; isOnline?: boolean; error?: string }> => {
+    try {
+      const result = await saveAppLogoToCloud(newLogoUrl);
+      if (newLogoUrl) {
+        setCustomLogoUrl(newLogoUrl);
+        saveCustomLogo(newLogoUrl);
+        if (result.isOnline) {
+          setNotification('✓ Logo kustom berhasil disimpan & disinkronkan ke Cloud Firestore.');
+        } else {
+          setNotification('Logo kustom disimpan di browser (Mode Cadangan Lokal).');
+        }
+      } else {
+        setCustomLogoUrl(null);
+        removeCustomLogo();
+        if (result.isOnline) {
+          setNotification('✓ Logo default diterapkan & disinkronkan ke Cloud Firestore.');
+        } else {
+          setNotification('Logo default diterapkan secara lokal.');
+        }
+      }
+      setTimeout(() => setNotification(null), 3500);
+      return result;
+    } catch (e: any) {
+      console.error('Logo save error:', e);
+      return { success: false, error: e?.message || 'Gagal menyimpan logo ke database' };
     }
-    setTimeout(() => setNotification(null), 3500);
   };
 
   // Run connection check, load cloud logo, real-time sync, and auto-cleanup on mount
@@ -936,15 +951,22 @@ export default function App() {
     handleCheckDbConnection();
     syncPendingLocalReportsToCloud();
 
-    // Initial check if cloud has a synced logo
+    // Initial check if cloud has a synced logo (or upload local logo to cloud if cloud is empty)
     loadAppLogoFromCloud().then((cloudLogo) => {
       if (cloudLogo) {
         setCustomLogoUrl(cloudLogo);
         saveCustomLogo(cloudLogo);
+      } else {
+        const localLogo = getCustomLogo();
+        if (localLogo) {
+          saveAppLogoToCloud(localLogo).catch((err) => {
+            console.warn('Initial cloud logo upload notice:', err);
+          });
+        }
       }
     });
 
-    // Real-time listener for app logo
+    // Real-time listener for app logo across all devices & users
     const unsubLogo = subscribeToAppLogo((cloudLogo) => {
       setCustomLogoUrl(cloudLogo);
       if (cloudLogo) {
@@ -2151,6 +2173,7 @@ export default function App() {
         onClose={() => setIsLogoModalOpen(false)}
         customLogoUrl={customLogoUrl}
         onSaveLogo={handleSaveLogo}
+        isDbOnline={isDbOnline}
       />
 
       {/* Database Connection & Security Status Modal */}
