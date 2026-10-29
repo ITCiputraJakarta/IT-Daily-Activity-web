@@ -87,7 +87,35 @@ export async function exportElementsToA4Pdf(
     });
 
     const imgData = canvas.toDataURL('image/jpeg', 0.95);
-    pdf.addImage(imgData, 'JPEG', 0, 0, a4WidthMm, a4HeightMm, undefined, 'FAST');
+    const canvasAspect = canvas.height / canvas.width;
+    const a4Aspect = a4HeightMm / a4WidthMm; // 297 / 210 = 1.4142857
+
+    // Safely render onto A4 page preserving 100% true aspect ratio without squishing
+    let printW = a4WidthMm;
+    let printH = a4HeightMm;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    if (Math.abs(canvasAspect - a4Aspect) <= 0.02) {
+      printW = a4WidthMm;
+      printH = a4HeightMm;
+      offsetX = 0;
+      offsetY = 0;
+    } else if (canvasAspect > a4Aspect) {
+      // Slightly taller: fit height, center horizontally
+      printH = a4HeightMm;
+      printW = a4HeightMm / canvasAspect;
+      offsetX = (a4WidthMm - printW) / 2;
+      offsetY = 0;
+    } else {
+      // Slightly wider: fit width, center vertically
+      printW = a4WidthMm;
+      printH = a4WidthMm * canvasAspect;
+      offsetX = 0;
+      offsetY = (a4HeightMm - printH) / 2;
+    }
+
+    pdf.addImage(imgData, 'JPEG', offsetX, offsetY, printW, printH, undefined, 'FAST');
   }
 
   if (onProgress) {

@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { DailyActivityReport, ServerThresholdSettings, RoutineActivityTemplate, LogBookItem } from '../types';
 import { getApplicableRoutineActivities } from '../data/teamMembers';
+import { sanitizeAndDeduplicateActivities, normalizeActivityKey } from '../utils/activityDeduplicator';
 import { CiputraLogo } from './CiputraLogo';
 
 interface Props {
@@ -21,29 +22,35 @@ export const DailyActivityPrintView: React.FC<Props> = ({
   routineTemplates,
 }) => {
   // Only include activities with non-empty Activities Details.
-  // Guarantee that Routine Activities ALWAYS appear at the VERY BOTTOM of the table,
-  // with numbering continuing sequentially from the last regular activity.
+  // Strictly deduplicates so each routine task appears EXACTLY ONCE for this date.
+  // Routine Activities ALWAYS appear at the VERY BOTTOM with clean 1..N numbering.
   const validActivities = useMemo(() => {
     const rawActivities = (report.logBookActivities || []).filter(
       (act) => Boolean(act && typeof act.details === 'string' && act.details.trim() !== '')
     );
 
-    // If routine templates are passed, check active vs deactivated status
-    let activeRoutinesFromTemplates: LogBookItem[] = [];
     const excludedIds = report.excludedRoutineIds || [];
 
+    // Base sanitized list: removes internal duplicates and enforces single routine item per task
+    const sanitized = sanitizeAndDeduplicateActivities(rawActivities, excludedIds);
+
+    // If routine templates are passed, check if any active scheduled template for this date is missing
+    let finalActivities = [...sanitized];
     if (routineTemplates && Array.isArray(routineTemplates)) {
       const applicable = getApplicableRoutineActivities(routineTemplates, report.date);
-      // Map active templates that might not yet be in rawActivities
       applicable.forEach((template) => {
+        if (!template.isActive) return;
+        const key = normalizeActivityKey(template.details);
         const isExcluded = excludedIds.some(
-          (k) => k === template.id || k === template.details.trim().toLowerCase()
+          (k) => k === template.id || normalizeActivityKey(k) === key
         );
-        const alreadyInReport = rawActivities.some(
-          (act) => act.details?.trim().toLowerCase() === template.details.trim().toLowerCase()
+        if (isExcluded) return;
+
+        const alreadyExists = finalActivities.some(
+          (act) => normalizeActivityKey(act.details) === key
         );
-        if (!alreadyInReport && template.isActive && !isExcluded) {
-          activeRoutinesFromTemplates.push({
+        if (!alreadyExists) {
+          finalActivities.push({
             id: `routine-print-${template.id}`,
             no: 0,
             details: template.details,
@@ -58,43 +65,20 @@ export const DailyActivityPrintView: React.FC<Props> = ({
           });
         }
       });
+
+      // Filter out any routine whose template is explicitly marked inactive
+      finalActivities = finalActivities.filter((act) => {
+        if (!act.isRoutine) return true;
+        const key = normalizeActivityKey(act.details);
+        const tpl = routineTemplates.find((t) => normalizeActivityKey(t.details) === key);
+        if (tpl && !tpl.isActive) return false;
+        return true;
+      });
     }
 
-    // Split report activities into regular (non-routine) and routine activities
-    const regularItems = rawActivities.filter((act) => {
-      if (act.isRoutine) return false;
-      return true;
-    });
-
-    const existingRoutineItems = rawActivities.filter((act) => {
-      if (!act.isRoutine) return false;
-      const isExcluded = excludedIds.some(
-        (k) => k === act.details.trim().toLowerCase()
-      );
-      if (isExcluded) return false;
-
-      // If template exists and is deactivated, exclude it
-      if (routineTemplates) {
-        const matched = routineTemplates.find(
-          (t) => t.details.trim().toLowerCase() === act.details.trim().toLowerCase()
-        );
-        if (matched && !matched.isActive) return false;
-      }
-      return true;
-    });
-
-    // Combine routine items from report and any newly active templates
-    const allRoutineItems = [...existingRoutineItems, ...activeRoutinesFromTemplates];
-
-    // Combine: Regular tasks ALWAYS first, Routine tasks ALWAYS at the VERY BOTTOM
-    const combined = [...regularItems, ...allRoutineItems];
-
-    // Renumber sequentially 1..N starting from 1
-    return combined.map((act, index) => ({
-      ...act,
-      no: index + 1,
-    }));
-  }, [report.logBookActivities, report.date, report.prepared, routineTemplates]);
+    // Final pass through deduplicator to guarantee routine items at the bottom and 1..N numbering
+    return sanitizeAndDeduplicateActivities(finalActivities, excludedIds);
+  }, [report.logBookActivities, report.date, report.prepared, report.excludedRoutineIds, routineTemplates]);
 
   const formatCleanTemp = (val?: string) => {
     if (!val || !val.trim()) return '-';

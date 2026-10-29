@@ -78,6 +78,14 @@ export const RoutineActivityManagerModal: React.FC<Props> = ({
       return;
     }
 
+    const isDuplicate = templates.some(
+      (t) => t.details.trim().toLowerCase() === details.trim().toLowerCase()
+    );
+    if (isDuplicate) {
+      showFeedback('Aktivitas rutin dengan deskripsi ini sudah terdaftar.');
+      return;
+    }
+
     const newTemplate: RoutineActivityTemplate = {
       id: `routine-${Date.now()}`,
       details: details.trim(),

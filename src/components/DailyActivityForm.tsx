@@ -3,6 +3,7 @@ import { DailyActivityReport, LogBookItem, TeamMember, ClientUser, ServerThresho
 import { CLIENT_DEPARTMENTS, loadRoutineActivities, getApplicableRoutineActivities, isDateWeekend } from '../data/teamMembers';
 import { createDefaultActivityReport } from '../data/defaults';
 import { compressImage } from '../utils/imageUtils';
+import { sanitizeAndDeduplicateActivities, normalizeActivityKey } from '../utils/activityDeduplicator';
 import { CiputraLogo } from './CiputraLogo';
 import {
   Plus,
@@ -58,7 +59,7 @@ interface Props {
   onOpenRoutineModal?: () => void;
 }
 
-type ActivitySortOption = 'no-desc' | 'no-asc' | 'user-asc' | 'dept-asc' | 'pic-asc' | 'status';
+type ActivitySortOption = 'unfilled-first' | 'no-asc' | 'no-desc' | 'user-asc' | 'dept-asc' | 'pic-asc' | 'status';
 
 export const DailyActivityForm: React.FC<Props> = ({
   report,
@@ -93,22 +94,19 @@ export const DailyActivityForm: React.FC<Props> = ({
   const [filterPic, setFilterPic] = useState<string>('ALL');
   const [filterDept, setFilterDept] = useState<string>('ALL');
   
-  // Priority: User's saved preference -> mobile check (< 768px defaults to 'no-desc') -> 'no-desc' default
+  // Default to unfilled form at the top for instant effortless data entry
   const [sortBy, setSortBy] = useState<ActivitySortOption>(() => {
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem('daily_activity_sort_pref');
-        if (saved && (saved === 'no-desc' || saved === 'no-asc')) {
+        if (saved && (saved === 'unfilled-first' || saved === 'no-asc' || saved === 'no-desc')) {
           return saved as ActivitySortOption;
         }
       } catch {
         // ignore
       }
-      if (window.innerWidth < 768) {
-        return 'no-desc';
-      }
     }
-    return 'no-desc'; // Default to latest item on top so technicians never struggle with mobile scrolling!
+    return 'unfilled-first';
   });
 
   const handleSetSortBy = (val: ActivitySortOption) => {
@@ -340,22 +338,41 @@ export const DailyActivityForm: React.FC<Props> = ({
         );
       });
 
-    if (sortBy === 'no-desc') {
-      indices.sort((a, b) => b.idx - a.idx);
+    // Helper: Is an activity unfilled/blank (ready for input)?
+    const isUnfilled = (act: LogBookItem) => {
+      return !act.details?.trim() && !act.clientName?.trim() && (!act.pictureUrl || act.pictureUrl.trim() === '');
+    };
+
+    // Separate regular items from routine items:
+    // Routine items MUST ALWAYS STAY AT THE VERY BOTTOM regardless of sort/filter!
+    const regularEntries = indices.filter((entry) => !entry.act.isRoutine);
+    const routineEntries = indices.filter((entry) => entry.act.isRoutine);
+
+    if (sortBy === 'unfilled-first') {
+      // Unfilled regular activities come FIRST so technicians can immediately input!
+      regularEntries.sort((a, b) => {
+        const aEmpty = isUnfilled(a.act);
+        const bEmpty = isUnfilled(b.act);
+        if (aEmpty && !bEmpty) return -1;
+        if (!aEmpty && bEmpty) return 1;
+        return a.idx - b.idx;
+      });
+    } else if (sortBy === 'no-desc') {
+      regularEntries.sort((a, b) => b.idx - a.idx);
     } else if (sortBy === 'user-asc') {
-      indices.sort((a, b) =>
+      regularEntries.sort((a, b) =>
         (a.act.clientName || a.act.userClient || '').localeCompare(
           b.act.clientName || b.act.userClient || ''
         )
       );
     } else if (sortBy === 'dept-asc') {
-      indices.sort((a, b) =>
+      regularEntries.sort((a, b) =>
         (a.act.clientDepartment || a.act.userClient || '').localeCompare(
           b.act.clientDepartment || b.act.userClient || ''
         )
       );
     } else if (sortBy === 'pic-asc') {
-      indices.sort((a, b) => a.act.pic.localeCompare(b.act.pic));
+      regularEntries.sort((a, b) => a.act.pic.localeCompare(b.act.pic));
     } else if (sortBy === 'status') {
       const order: Record<string, number> = {
         Pending: 1,
@@ -363,12 +380,17 @@ export const DailyActivityForm: React.FC<Props> = ({
         Done: 3,
         Cancelled: 4,
       };
-      indices.sort((a, b) => (order[a.act.status] || 9) - (order[b.act.status] || 9));
+      regularEntries.sort((a, b) => (order[a.act.status] || 9) - (order[b.act.status] || 9));
     } else {
-      indices.sort((a, b) => a.idx - b.idx);
+      // 'no-asc': Natural #1 to #N order
+      regularEntries.sort((a, b) => a.idx - b.idx);
     }
 
-    return indices.map((entry) => entry.idx);
+    // Routine entries ALWAYS stay sorted ascending at the bottom!
+    routineEntries.sort((a, b) => a.idx - b.idx);
+
+    const combined = [...regularEntries, ...routineEntries];
+    return combined.map((entry) => entry.idx);
   }, [report.logBookActivities, activitySearch, filterPic, filterDept, sortBy]);
 
   // Confirmation modal state for deletions (Yes / No)
@@ -412,14 +434,17 @@ export const DailyActivityForm: React.FC<Props> = ({
 
       if (targetAct?.isRoutine) {
         const cur = latestReportRef.current;
-        const keyToExclude = targetAct.details.trim().toLowerCase();
+        const keyToExclude = normalizeActivityKey(targetAct.details);
         const existingExcluded = cur.excludedRoutineIds || [];
-        const nextExcluded = existingExcluded.includes(keyToExclude)
+        const nextExcluded = existingExcluded.some((k) => normalizeActivityKey(k) === keyToExclude)
           ? existingExcluded
           : [...existingExcluded, keyToExclude];
 
-        const updated = cur.logBookActivities.filter((_, i) => i !== idx);
-        const renumbered = updated.map((item, i) => ({ ...item, no: i + 1 }));
+        // Remove ALL items matching this routine details to eliminate any legacy duplicates
+        const updated = cur.logBookActivities.filter(
+          (item) => !(item.isRoutine && normalizeActivityKey(item.details) === keyToExclude)
+        );
+        const renumbered = sanitizeAndDeduplicateActivities(updated, nextExcluded);
         const nextReport = {
           ...cur,
           logBookActivities: renumbered,
@@ -478,21 +503,20 @@ export const DailyActivityForm: React.FC<Props> = ({
       return;
     }
 
-    const currentActivities = [...report.logBookActivities];
-    // Separate regular non-routine items
-    const regularItems = currentActivities.filter((act) => !act.isRoutine);
-    const existingRoutines = currentActivities.filter((act) => act.isRoutine);
+    const cur = latestReportRef.current;
+    const excluded = cur.excludedRoutineIds || [];
+    const working = [...cur.logBookActivities];
 
     let addedCount = 0;
-    const routineItems: LogBookItem[] = [...existingRoutines];
-
     applicable.forEach((t) => {
-      // Check if already in routineItems by details
-      const exists = routineItems.some(
-        (act) => act.details?.trim().toLowerCase() === t.details.trim().toLowerCase()
-      );
+      if (!t.isActive) return;
+      const key = normalizeActivityKey(t.details);
+      const isExcluded = excluded.some((k) => k === t.id || normalizeActivityKey(k) === key);
+      if (isExcluded) return;
+
+      const exists = working.some((act) => normalizeActivityKey(act.details) === key);
       if (!exists) {
-        const newItem: LogBookItem = {
+        working.push({
           id: `act-routine-${t.id}-${Date.now()}-${addedCount}`,
           no: 0,
           details: t.details,
@@ -500,25 +524,22 @@ export const DailyActivityForm: React.FC<Props> = ({
           clientDepartment: t.clientDepartment || 'IT (Internal IT)',
           userClient: t.clientDepartment || 'IT (Internal IT)',
           status: t.defaultStatus || 'Done',
-          pic: activeMembers[0]?.name || '',
+          pic: activeMembers[0]?.name || cur.prepared || 'IT Team',
           pictureUrl: '',
           isRoutine: true,
           noPhoto: t.noPhoto ?? true,
-        };
-        routineItems.push(newItem);
+        });
         addedCount++;
       }
     });
 
-    // Regular tasks ALWAYS first, Routine tasks ALWAYS at the VERY BOTTOM
-    const combined = [...regularItems, ...routineItems];
-    const renumbered = combined.map((act, idx) => ({ ...act, no: idx + 1 }));
-    updateField('logBookActivities', renumbered);
+    const sanitized = sanitizeAndDeduplicateActivities(working, excluded);
+    updateField('logBookActivities', sanitized);
 
     if (addedCount > 0) {
       showPasteToast(`✓ ${addedCount} aktivitas rutin (${isDateWeekend(report.date) ? 'Weekend' : 'Weekday'}) ditambahkan di bagian paling bawah!`);
     } else {
-      showPasteToast('Semua aktivitas rutin aktif sudah ada di bagian paling bawah daftar.');
+      showPasteToast('Semua aktivitas rutin aktif sudah ada (tanpa duplikasi) di bagian paling bawah.');
     }
   };
 
@@ -528,31 +549,29 @@ export const DailyActivityForm: React.FC<Props> = ({
     return getApplicableRoutineActivities(templates, report.date);
   }, [routineTemplates, report.date]);
 
-  // Auto-reconcile: Scheduled routine activities ALWAYS appear automatically in the report by default!
-  // (User only removes them if not wanted today, instead of having to manually add them)
+  // Auto-reconcile: Scheduled routine activities appear automatically by default, strictly deduplicated (max 1 instance per task)
   useEffect(() => {
     const templates = routineTemplates || loadRoutineActivities();
     const applicable = getApplicableRoutineActivities(templates, report.date);
     const excluded = report.excludedRoutineIds || [];
 
     const cur = latestReportRef.current;
-    const currentRoutines = cur.logBookActivities.filter((act) => act.isRoutine);
-    const regularItems = cur.logBookActivities.filter((act) => !act.isRoutine);
 
-    let needsSync = false;
-    const finalRoutines = [...currentRoutines];
+    // Step 1: Deduplicate existing activities so duplicates never survive
+    const sanitizedExisting = sanitizeAndDeduplicateActivities(cur.logBookActivities, excluded);
+    const working = [...sanitizedExisting];
+    let needsSync = sanitizedExisting.length !== cur.logBookActivities.length;
 
+    // Step 2: Ensure any active applicable routine is present
     applicable.forEach((tpl) => {
-      const isExcluded =
-        excluded.includes(tpl.id) ||
-        excluded.includes(tpl.details.trim().toLowerCase());
+      if (!tpl.isActive) return;
+      const key = normalizeActivityKey(tpl.details);
+      const isExcluded = excluded.some((k) => k === tpl.id || normalizeActivityKey(k) === key);
 
       if (!isExcluded) {
-        const exists = finalRoutines.some(
-          (act) => act.details?.trim().toLowerCase() === tpl.details.trim().toLowerCase()
-        );
+        const exists = working.some((act) => normalizeActivityKey(act.details) === key);
         if (!exists) {
-          finalRoutines.push({
+          working.push({
             id: `act-routine-${tpl.id}-${report.date}`,
             no: 0,
             details: tpl.details,
@@ -571,11 +590,10 @@ export const DailyActivityForm: React.FC<Props> = ({
     });
 
     if (needsSync) {
-      const combined = [...regularItems, ...finalRoutines];
-      const renumbered = combined.map((act, idx) => ({ ...act, no: idx + 1 }));
+      const finalSanitized = sanitizeAndDeduplicateActivities(working, excluded);
       const nextReport = {
         ...cur,
-        logBookActivities: renumbered,
+        logBookActivities: finalSanitized,
         updatedAt: Date.now(),
       };
       latestReportRef.current = nextReport;
@@ -586,81 +604,70 @@ export const DailyActivityForm: React.FC<Props> = ({
     }
   }, [report.date, routineTemplates]);
 
-  // Remove a routine activity specifically for today (does not alter the master template for tomorrow)
+  // Remove a routine activity specifically for today (does not alter the master template for other days)
   const handleRemoveRoutineForToday = (detailsText: string) => {
     const cur = latestReportRef.current;
-    const targetIdx = cur.logBookActivities.findIndex(
-      (act) => act.isRoutine && act.details?.trim().toLowerCase() === detailsText.trim().toLowerCase()
+    const targetKey = normalizeActivityKey(detailsText);
+
+    // Filter out all instances of this routine (in case of duplicate records)
+    const updated = cur.logBookActivities.filter(
+      (act) => !(act.isRoutine && normalizeActivityKey(act.details) === targetKey)
     );
-    if (targetIdx !== -1) {
-      const updated = cur.logBookActivities.filter((_, i) => i !== targetIdx);
-      const renumbered = updated.map((item, idx) => ({ ...item, no: idx + 1 }));
 
-      const keyToExclude = detailsText.trim().toLowerCase();
-      const existingExcluded = cur.excludedRoutineIds || [];
-      const nextExcluded = existingExcluded.includes(keyToExclude)
-        ? existingExcluded
-        : [...existingExcluded, keyToExclude];
+    const existingExcluded = cur.excludedRoutineIds || [];
+    const nextExcluded = existingExcluded.some((k) => normalizeActivityKey(k) === targetKey)
+      ? existingExcluded
+      : [...existingExcluded, targetKey];
 
-      const nextReport = {
-        ...cur,
-        logBookActivities: renumbered,
-        excludedRoutineIds: nextExcluded,
-        isUserModified: true,
-        updatedAt: Date.now(),
-      };
-      latestReportRef.current = nextReport;
-      onChange(nextReport);
-      if (onAutoSaveActivity) {
-        onAutoSaveActivity(nextReport);
-      }
-      showPasteToast(`Aktivitas "${detailsText}" dikurangi khusus hari ini. Besok otomatis muncul kembali.`);
+    const renumbered = sanitizeAndDeduplicateActivities(updated, nextExcluded);
+
+    const nextReport = {
+      ...cur,
+      logBookActivities: renumbered,
+      excludedRoutineIds: nextExcluded,
+      isUserModified: true,
+      updatedAt: Date.now(),
+    };
+    latestReportRef.current = nextReport;
+    onChange(nextReport);
+    if (onAutoSaveActivity) {
+      onAutoSaveActivity(nextReport);
     }
+    showPasteToast(`Aktivitas "${detailsText}" dikurangi khusus hari ini. Besok otomatis muncul kembali.`);
   };
 
   // Restore or add back a routine activity specifically for today's report at the very bottom
   const handleAddRoutineForToday = (template: RoutineActivityTemplate) => {
     const cur = latestReportRef.current;
-    const keyToExclude = template.details.trim().toLowerCase();
+    const targetKey = normalizeActivityKey(template.details);
     const existingExcluded = cur.excludedRoutineIds || [];
-    const nextExcluded = existingExcluded.filter((k) => k !== keyToExclude && k !== template.id);
-
-    const exists = cur.logBookActivities.some(
-      (act) => act.isRoutine && act.details?.trim().toLowerCase() === template.details.trim().toLowerCase()
+    const nextExcluded = existingExcluded.filter(
+      (k) => normalizeActivityKey(k) !== targetKey && k !== template.id
     );
 
-    if (exists) {
-      if (nextExcluded.length !== existingExcluded.length) {
-        const nextReport = { ...cur, excludedRoutineIds: nextExcluded };
-        latestReportRef.current = nextReport;
-        onChange(nextReport);
-        if (onAutoSaveActivity) {
-          onAutoSaveActivity(nextReport);
-        }
-      }
-      return;
+    const exists = cur.logBookActivities.some(
+      (act) => normalizeActivityKey(act.details) === targetKey
+    );
+
+    let updated = [...cur.logBookActivities];
+    if (!exists) {
+      const defaultPic = activeMembers[0]?.name || cur.prepared || '';
+      updated.push({
+        id: `act-routine-${template.id}-${Date.now()}`,
+        no: 0,
+        details: template.details,
+        clientName: template.clientName || '',
+        clientDepartment: template.clientDepartment || 'IT (Internal IT)',
+        userClient: template.clientDepartment || 'IT (Internal IT)',
+        status: template.defaultStatus || 'Done',
+        pic: defaultPic,
+        pictureUrl: '',
+        isRoutine: true,
+        noPhoto: template.noPhoto ?? true,
+      });
     }
 
-    const defaultPic = activeMembers[0]?.name || cur.prepared || '';
-    const newItem: LogBookItem = {
-      id: `act-routine-${template.id}-${Date.now()}`,
-      no: 0,
-      details: template.details,
-      clientName: template.clientName || '',
-      clientDepartment: template.clientDepartment || 'IT (Internal IT)',
-      userClient: template.clientDepartment || 'IT (Internal IT)',
-      status: template.defaultStatus || 'Done',
-      pic: defaultPic,
-      pictureUrl: '',
-      isRoutine: true,
-      noPhoto: template.noPhoto ?? true,
-    };
-
-    // Keep regular activities first, routine activities at the VERY BOTTOM
-    const regularItems = cur.logBookActivities.filter((act) => !act.isRoutine);
-    const existingRoutines = cur.logBookActivities.filter((act) => act.isRoutine);
-    const combined = [...regularItems, ...existingRoutines, newItem];
-    const renumbered = combined.map((item, idx) => ({ ...item, no: idx + 1 }));
+    const renumbered = sanitizeAndDeduplicateActivities(updated, nextExcluded);
 
     const nextReport = {
       ...cur,
@@ -675,6 +682,35 @@ export const DailyActivityForm: React.FC<Props> = ({
       onAutoSaveActivity(nextReport);
     }
     showPasteToast(`✓ Aktivitas "${template.details}" dipulihkan ke laporan hari ini di bagian paling bawah.`);
+  };
+
+  const addLogBookItemAtTop = () => {
+    const cur = latestReportRef.current;
+    const defaultDept = (departments && departments.length > 0) ? departments[0] : 'FO (Front Office)';
+    const defaultPic = activeMembers[0]?.name || '';
+    const newItem: LogBookItem = {
+      id: 'act-' + Date.now(),
+      no: 0,
+      details: '',
+      clientName: '',
+      clientDepartment: defaultDept,
+      userClient: defaultDept,
+      status: 'Done',
+      pic: defaultPic,
+      pictureUrl: '',
+      noPhoto: false,
+    };
+
+    // Insert at index 0 (top of regular activities)
+    const updated = [newItem, ...cur.logBookActivities];
+    const renumbered = updated.map((item, idx) => ({ ...item, no: idx + 1 }));
+    updateField('logBookActivities', renumbered);
+
+    // Auto-scroll & focus to the top activity card
+    setTimeout(() => {
+      jumpToActivity(0);
+    }, 120);
+    showPasteToast('✓ Form kosong baru ditambahkan di paling atas, siap diisi!');
   };
 
   const addLogBookItem = () => {
@@ -750,7 +786,7 @@ export const DailyActivityForm: React.FC<Props> = ({
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const compressed = await compressImage(file, 800, 800, 0.72);
+      const compressed = await compressImage(file);
       callback(compressed);
       // Reset input value so user can take photo again with same file name if needed
       e.target.value = '';
@@ -763,7 +799,7 @@ export const DailyActivityForm: React.FC<Props> = ({
   const processImageForActivity = async (file: File, index: number) => {
     if (!file.type.startsWith('image/')) return;
     try {
-      const compressed = await compressImage(file, 1200, 900, 0.78);
+      const compressed = await compressImage(file);
       handleLogBookImageChange(index, compressed);
     } catch (err) {
       console.error('Failed to compress activity image:', err);
@@ -826,7 +862,7 @@ export const DailyActivityForm: React.FC<Props> = ({
           for (const type of item.types) {
             if (type.startsWith('image/')) {
               const blob = await item.getType(type);
-              const compressed = await compressImage(blob, 1200, 900, 0.78);
+              const compressed = await compressImage(blob);
               handleSaraImageChange(compressed);
               showPasteToast('✓ Screenshot SARA berhasil ditempelkan dari Snipping Tool!');
               return;
@@ -850,7 +886,7 @@ export const DailyActivityForm: React.FC<Props> = ({
           for (const type of item.types) {
             if (type.startsWith('image/')) {
               const blob = await item.getType(type);
-              const compressed = await compressImage(blob, 1200, 900, 0.78);
+              const compressed = await compressImage(blob);
               handleTrafficImageChange(compressed);
               showPasteToast('✓ Grafik traffic internet berhasil ditempelkan dari Snipping Tool!');
               return;
@@ -874,7 +910,7 @@ export const DailyActivityForm: React.FC<Props> = ({
           for (const type of item.types) {
             if (type.startsWith('image/')) {
               const blob = await item.getType(type);
-              const compressed = await compressImage(blob, 1200, 900, 0.78);
+              const compressed = await compressImage(blob);
               handleServerTempPhotoChange(compressed);
               showPasteToast('✓ Foto termometer server berhasil ditempelkan dari Snipping Tool!');
               return;
@@ -904,7 +940,7 @@ export const DailyActivityForm: React.FC<Props> = ({
         if (file) {
           e.preventDefault();
           e.stopPropagation();
-          const compressed = await compressImage(file, 1200, 900, 0.78);
+          const compressed = await compressImage(file);
           setter(compressed);
           showPasteToast(successMsg);
           return;
@@ -1168,11 +1204,21 @@ export const DailyActivityForm: React.FC<Props> = ({
             </button>
             <button
               type="button"
-              onClick={addLogBookItem}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer"
+              onClick={addLogBookItemAtTop}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer"
+              title="Tambah form kosong baru di baris paling atas agar langsung siap diisi"
             >
               <Plus className="w-4 h-4" />
-              <span>+ Tambah Aktivitas</span>
+              <span>+ Form Baru di Atas</span>
+            </button>
+            <button
+              type="button"
+              onClick={addLogBookItem}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold transition cursor-pointer"
+              title="Tambah form di bawah sebelum aktivitas rutin"
+            >
+              <Plus className="w-3.5 h-3.5 text-slate-500" />
+              <span>+ Form di Bawah</span>
             </button>
           </div>
         </div>
@@ -1185,43 +1231,66 @@ export const DailyActivityForm: React.FC<Props> = ({
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-bold text-slate-900">Mode Tampilan HP &amp; Urutan Poin:</span>
+                <span className="text-xs font-bold text-slate-900">Urutan Tampilan Form:</span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 font-extrabold uppercase tracking-wide">
-                  {sortBy === 'no-desc' ? 'Terbaru di Atas (Mode HP)' : 'Urutan #1 di Atas (Standar A4)'}
+                  {sortBy === 'unfilled-first'
+                    ? '📝 Form Belum Diisi di Atas'
+                    : sortBy === 'no-desc'
+                    ? '📱 No. Terakhir di Atas'
+                    : '📄 Urutan #1 di Atas (Standar A4)'}
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 font-bold">
+                  ✓ Rutin Selalu di Paling Bawah
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 mt-0.5">
-                {sortBy === 'no-desc'
-                  ? 'Aktivitas paling terakhir berada di paling atas agar saat buka di HP langsung bisa mengisi poin tanpa repot scroll ke bawah.'
-                  : 'Aktivitas berurutan dari nomor 1 ke nomor terakhir sesuai tampilan lembar dokumen A4.'}
+                {sortBy === 'unfilled-first'
+                  ? 'Form yang belum diisi diposisikan di paling atas agar memudahkan teknisi langsung mengetik tanpa scroll.'
+                  : sortBy === 'no-desc'
+                  ? 'Aktivitas terbaru di atas. Aktivitas rutin harian tetap dipertahankan di bagian paling bawah.'
+                  : 'Aktivitas berurutan nomor 1 ke nomor terakhir sesuai tampilan cetak A4. Aktivitas rutin di bagian paling bawah.'}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 self-start md:self-auto bg-slate-200/80 p-1 rounded-lg border border-slate-300">
+          <div className="flex items-center gap-1.5 self-start md:self-auto bg-slate-200/80 p-1 rounded-lg border border-slate-300 flex-wrap">
             <button
               type="button"
-              onClick={() => handleSetSortBy('no-desc')}
-              className={`px-3 py-1.5 rounded-md text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                sortBy === 'no-desc'
+              onClick={() => handleSetSortBy('unfilled-first')}
+              className={`px-2.5 py-1.5 rounded-md text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+                sortBy === 'unfilled-first'
                   ? 'bg-emerald-700 text-white shadow-xs'
                   : 'text-slate-700 hover:text-slate-900 hover:bg-slate-100'
               }`}
+              title="Form yang belum diisi langsung berada di paling atas untuk kemudahan input"
             >
-              <ArrowDown className="w-3.5 h-3.5" />
-              <span>📱 Terakhir di Atas (HP)</span>
+              <span>📝 Form Kosong di Atas</span>
             </button>
             <button
               type="button"
               onClick={() => handleSetSortBy('no-asc')}
-              className={`px-3 py-1.5 rounded-md text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+              className={`px-2.5 py-1.5 rounded-md text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
                 sortBy === 'no-asc'
                   ? 'bg-emerald-700 text-white shadow-xs'
                   : 'text-slate-700 hover:text-slate-900 hover:bg-slate-100'
               }`}
+              title="Urut nomor #1 sampai akhir sesuai lembar cetak A4"
             >
               <ArrowUp className="w-3.5 h-3.5" />
-              <span>📄 Urut #1 (A4)</span>
+              <span>📄 Urut #1 A4</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSetSortBy('no-desc')}
+              className={`px-2.5 py-1.5 rounded-md text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+                sortBy === 'no-desc'
+                  ? 'bg-emerald-700 text-white shadow-xs'
+                  : 'text-slate-700 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+              title="Nomor terbesar di atas, aktivitas rutin tetap di paling bawah"
+            >
+              <ArrowDown className="w-3.5 h-3.5" />
+              <span>📱 Terakhir di Atas</span>
             </button>
           </div>
         </div>
@@ -1291,8 +1360,9 @@ export const DailyActivityForm: React.FC<Props> = ({
               onChange={(e) => handleSetSortBy(e.target.value as ActivitySortOption)}
               className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-300 bg-white font-semibold text-slate-800"
             >
-              <option value="no-desc">Sortir: No. Terakhir di Atas (Terbaru / Mode HP)</option>
+              <option value="unfilled-first">Sortir: Form Belum Diisi di Paling Atas (Input Cepat)</option>
               <option value="no-asc">Sortir: No. Urut #1 di Atas (Standar A4)</option>
+              <option value="no-desc">Sortir: No. Terakhir di Atas (Aktivitas Rutin Tetap di Bawah)</option>
               <option value="user-asc">Sortir: Nama User / Client (A-Z)</option>
               <option value="dept-asc">Sortir: Departemen User (A-Z)</option>
               <option value="pic-asc">Sortir: Nama PIC IT (A-Z)</option>
@@ -1363,145 +1433,137 @@ export const DailyActivityForm: React.FC<Props> = ({
           ))}
         </datalist>
 
-        {/* Interactive Routine Control Panel: Otomatis Muncul, Hapus Jika Tidak Diinginkan */}
-        <div className="mb-4 p-3.5 bg-linear-to-r from-amber-50/90 via-amber-50/50 to-orange-50/70 border border-amber-300 rounded-xl shadow-2xs">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-amber-200/80 mb-2.5">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center font-bold shrink-0 shadow-2xs">
-                <ListChecks className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-bold text-xs text-amber-950">
-                    Aktivitas Rutin ({isDateWeekend(report.date) ? 'Jadwal Weekend' : 'Jadwal Weekday'})
-                  </span>
-                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300">
-                    ✓ Otomatis Muncul di Paling Bawah
-                  </span>
-                </div>
-                <p className="text-[11px] text-amber-850 mt-0.5">
-                  Aktivitas rutin di bawah <strong>sudah otomatis muncul</strong> di form &amp; lembar cetak. Jika pada hari ini tidak dijalankan, klik <strong>[× Hapus Hari Ini]</strong> (besok otomatis muncul kembali).
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-1.5 self-start sm:self-auto shrink-0">
-              {onOpenRoutineModal && (
-                <button
-                  type="button"
-                  onClick={onOpenRoutineModal}
-                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-xs font-bold transition shadow-2xs cursor-pointer"
-                  title="Buka modal untuk kelola master template (tambah baru, edit jadwal weekday/weekend)"
-                >
-                  <Pencil className="w-3.5 h-3.5 text-amber-700" />
-                  <span>Master Template</span>
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Quick chips / toggles for today's routine tasks */}
-          <div className="flex items-center gap-2 flex-wrap">
-            {applicableRoutines.length === 0 ? (
-              <span className="text-xs text-amber-800 italic">
-                Tidak ada template rutin yang dijadwalkan untuk {isDateWeekend(report.date) ? 'weekend' : 'weekday'} ini.
-              </span>
-            ) : (
-              applicableRoutines.map((template) => {
-                const currentItem = report.logBookActivities.find(
-                  (act) => act.isRoutine && act.details?.trim().toLowerCase() === template.details.trim().toLowerCase()
-                );
-                const isIncluded = Boolean(currentItem);
-
-                if (isIncluded) {
-                  return (
-                    <div
-                      key={template.id}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-950 border border-emerald-300 text-xs font-bold shadow-2xs transition animate-in fade-in"
-                    >
-                      <Check className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
-                      <span className="truncate max-w-[240px] sm:max-w-[320px]">{template.details}</span>
-                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-200/80 text-emerald-900 font-semibold">
-                        #{currentItem?.no}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveRoutineForToday(template.details)}
-                        className="ml-1.5 px-2 py-0.5 rounded bg-red-100 hover:bg-red-200 text-red-800 font-bold text-[10.5px] flex items-center gap-1 transition cursor-pointer"
-                        title={`Kurangi / hapus "${template.details}" khusus hari ini saja`}
-                      >
-                        <X className="w-3 h-3" />
-                        <span>Hapus Hari Ini</span>
-                      </button>
-                    </div>
-                  );
-                }
-
-                return (
-                  <div
-                    key={template.id}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-100/50 text-slate-700 border border-dashed border-amber-400 text-xs shadow-2xs transition"
-                  >
-                    <span className="text-[10.5px] text-amber-900 font-bold bg-amber-200 px-1.5 py-0.2 rounded">
-                      Dihapus Hari Ini
-                    </span>
-                    <span className="line-through text-slate-500 truncate max-w-[200px] sm:max-w-[280px]">
-                      {template.details}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleAddRoutineForToday(template)}
-                      className="ml-1 px-2 py-0.5 rounded bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold text-[10.5px] flex items-center gap-1 transition cursor-pointer"
-                      title={`Pulihkan kembali "${template.details}" ke laporan hari ini`}
-                    >
-                      <Plus className="w-3 h-3" />
-                      <span>Pulihkan</span>
-                    </button>
-                  </div>
-                );
-              })
-            )}
-
-            {/* Quick add custom routine button */}
-            {onOpenRoutineModal && (
-              <button
-                type="button"
-                onClick={onOpenRoutineModal}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-100/70 hover:bg-amber-200/80 text-amber-900 border border-amber-300 text-xs font-bold transition cursor-pointer"
-                title="Tambah template aktivitas rutin baru"
-              >
-                <Plus className="w-3.5 h-3.5 text-amber-700" />
-                <span>+ Tambah Template Rutin</span>
-              </button>
-            )}
-          </div>
-        </div>
-
         <div className="space-y-4">
           {filteredActivityIndices.length === 0 ? (
             <div className="py-8 text-center text-xs text-slate-500 bg-slate-50 rounded-xl border border-dashed border-slate-200">
               Tidak ada aktivitas yang cocok dengan filter / pencarian saat ini.
             </div>
           ) : (
-            filteredActivityIndices.map((index) => {
+            filteredActivityIndices.map((index, displayIdx) => {
               const act = report.logBookActivities[index];
               const matchedClientUser = activeClientUsers.find(
                 (u) => u.name.toLowerCase() === (act.clientName || '').trim().toLowerCase()
               );
 
-              const isFirstRoutine = act.isRoutine && (index === 0 || !report.logBookActivities[index - 1]?.isRoutine);
+              const prevAct = displayIdx > 0 ? report.logBookActivities[filteredActivityIndices[displayIdx - 1]] : null;
+              const isFirstRoutine = Boolean(act.isRoutine && (!prevAct || !prevAct.isRoutine));
+              const isUnfilledCard = !act.isRoutine && !act.details?.trim() && !act.clientName?.trim() && (!act.pictureUrl || act.pictureUrl.trim() === '');
 
               return (
                 <React.Fragment key={act.id || index}>
                   {isFirstRoutine && (
-                    <div className="pt-2 pb-1">
-                      <div className="flex items-center gap-2 p-2.5 rounded-xl bg-amber-50/90 border border-amber-300 text-amber-950 text-xs shadow-2xs">
-                        <ListChecks className="w-4 h-4 text-amber-700 shrink-0" />
-                        <div className="flex-1">
-                          <span className="font-bold text-amber-900">Aktivitas Rutin (List Otomatis di Bagian Paling Bawah)</span>
-                          <span className="text-[11px] text-amber-800 ml-1.5 hidden sm:inline">
-                            · Nomor urut otomatis melanjutkan aktivitas harian di atas dan tampil pada preview / laporan cetak.
-                          </span>
+                    <div className="pt-6 pb-2">
+                      {/* Interactive Routine Control Panel: Otomatis Muncul di Paling Bawah */}
+                      <div className="mb-4 p-3.5 bg-linear-to-r from-amber-50/90 via-amber-50/50 to-orange-50/70 border-2 border-amber-300 rounded-xl shadow-2xs">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-amber-200/80 mb-2.5">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center font-bold shrink-0 shadow-2xs">
+                              <ListChecks className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-bold text-xs text-amber-950">
+                                  Aktivitas Rutin ({isDateWeekend(report.date) ? 'Jadwal Weekend' : 'Jadwal Weekday'})
+                                </span>
+                                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300">
+                                  ✓ Otomatis Muncul di Paling Bawah
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-amber-850 mt-0.5">
+                                Aktivitas rutin ini ditaruh di <strong>bagian paling bawah</strong> agar form penginputan harian di atas tetap mudah dan cepat diisi.
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 self-start sm:self-auto shrink-0">
+                            {onOpenRoutineModal && (
+                              <button
+                                type="button"
+                                onClick={onOpenRoutineModal}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-xs font-bold transition shadow-2xs cursor-pointer"
+                                title="Buka modal untuk kelola master template (tambah baru, edit jadwal weekday/weekend)"
+                              >
+                                <Pencil className="w-3.5 h-3.5 text-amber-700" />
+                                <span>Master Template</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Quick chips / toggles for today's routine tasks */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {applicableRoutines.length === 0 ? (
+                            <span className="text-xs text-amber-800 italic">
+                              Tidak ada template rutin yang dijadwalkan untuk {isDateWeekend(report.date) ? 'weekend' : 'weekday'} ini.
+                            </span>
+                          ) : (
+                            applicableRoutines.map((template) => {
+                              const tplKey = normalizeActivityKey(template.details);
+                              const currentItem = report.logBookActivities.find(
+                                (item) => item.isRoutine && normalizeActivityKey(item.details) === tplKey
+                              );
+                              const isIncluded = Boolean(currentItem);
+
+                              if (isIncluded) {
+                                return (
+                                  <div
+                                    key={template.id}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-950 border border-emerald-300 text-xs font-bold shadow-2xs transition animate-in fade-in"
+                                  >
+                                    <Check className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                                    <span className="truncate max-w-[240px] sm:max-w-[320px]">{template.details}</span>
+                                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-200/80 text-emerald-900 font-semibold">
+                                      #{currentItem?.no}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveRoutineForToday(template.details)}
+                                      className="ml-1.5 px-2 py-0.5 rounded bg-red-100 hover:bg-red-200 text-red-800 font-bold text-[10.5px] flex items-center gap-1 transition cursor-pointer"
+                                      title={`Kurangi / hapus "${template.details}" khusus hari ini saja`}
+                                    >
+                                      <X className="w-3 h-3" />
+                                      <span>Hapus Hari Ini</span>
+                                    </button>
+                                  </div>
+                                );
+                              }
+
+                              return (
+                                <div
+                                  key={template.id}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-100/50 text-slate-700 border border-dashed border-amber-400 text-xs shadow-2xs transition"
+                                >
+                                  <span className="text-[10.5px] text-amber-900 font-bold bg-amber-200 px-1.5 py-0.2 rounded">
+                                    Dihapus Hari Ini
+                                  </span>
+                                  <span className="line-through text-slate-500 truncate max-w-[200px] sm:max-w-[280px]">
+                                    {template.details}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAddRoutineForToday(template)}
+                                    className="ml-1 px-2 py-0.5 rounded bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold text-[10.5px] flex items-center gap-1 transition cursor-pointer"
+                                    title={`Pulihkan kembali "${template.details}" ke laporan hari ini`}
+                                  >
+                                    <Plus className="w-3 h-3" />
+                                    <span>Pulihkan</span>
+                                  </button>
+                                </div>
+                              );
+                            })
+                          )}
+
+                          {onOpenRoutineModal && (
+                            <button
+                              type="button"
+                              onClick={onOpenRoutineModal}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-100/70 hover:bg-amber-200/80 text-amber-900 border border-amber-300 text-xs font-bold transition cursor-pointer"
+                              title="Tambah template aktivitas rutin baru"
+                            >
+                              <Plus className="w-3.5 h-3.5 text-amber-700" />
+                              <span>+ Tambah Template Rutin</span>
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1513,21 +1575,29 @@ export const DailyActivityForm: React.FC<Props> = ({
                     className={`border rounded-xl p-4 transition-all duration-300 shadow-2xs outline-hidden focus:ring-2 focus:ring-emerald-500/50 ${
                       index === highlightedIndex
                         ? 'border-emerald-500 bg-emerald-50/40 ring-4 ring-emerald-500/20 scale-[1.005]'
+                        : isUnfilledCard
+                        ? 'border-emerald-300/80 bg-emerald-50/15 ring-1 ring-emerald-400/30 hover:border-emerald-400'
                         : 'border-slate-200 bg-white hover:border-slate-300'
                     }`}
                   >
               {/* Header card with action buttons */}
               <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="w-6 h-6 rounded-full bg-slate-900 text-white text-xs font-bold flex items-center justify-center">
-                    {index + 1}
+                    {act.no || (index + 1)}
                   </span>
                   <span className="text-xs font-bold text-slate-900">
-                    Aktivitas #{index + 1}
+                    Aktivitas #{act.no || (index + 1)}
                   </span>
+                  {isUnfilledCard && (
+                    <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-emerald-100 text-emerald-900 border border-emerald-300 flex items-center gap-1 shadow-2xs">
+                      <Pencil className="w-3 h-3 text-emerald-700" />
+                      <span>Form Kosong (Siap Diisi)</span>
+                    </span>
+                  )}
                   {act.isRoutine && (
                     <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-amber-100 text-amber-900 border border-amber-300">
-                      Rutin
+                      Rutin (Paling Bawah)
                     </span>
                   )}
                   {act.noPhoto && (

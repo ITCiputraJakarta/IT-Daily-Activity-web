@@ -611,7 +611,7 @@ export const WeeklyReportForm: React.FC<Props> = ({
               .filter((it) => it.text.toLowerCase().includes(highlightSearch.toLowerCase()))
               .map((item, index) => (
                 <div
-                  key={item.id || index}
+                  key={item.id ? `${item.id}-${index}` : `hl-${index}`}
                   className="flex items-start gap-2 p-2 bg-slate-50 hover:bg-white rounded-xl border border-slate-200 shadow-2xs transition"
                 >
                   <span className="w-6 h-6 rounded-full bg-slate-900 text-white text-xs font-bold flex items-center justify-center shrink-0 mt-1">

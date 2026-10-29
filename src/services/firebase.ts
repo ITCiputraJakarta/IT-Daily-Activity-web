@@ -436,6 +436,7 @@ export async function saveActivityReport(report: DailyActivityReport): Promise<{
     const docRef = doc(db, COLLECTION_ACTIVITIES, report.date);
     await setDoc(docRef, cleanedReport);
     recordFirebaseWrite(1, 'Simpan Daily Activity');
+    invalidateSavedReportDatesCache();
     return { success: true };
   } catch (error) {
     if (error instanceof Error && (error.message.includes('permission') || error.message.includes('insufficient'))) {
@@ -565,6 +566,7 @@ export async function saveChecklistReport(report: DailyChecklistReport): Promise
     }
 
     recordFirebaseWrite(1 + propagatedDates.length, 'Simpan Daily Checklist');
+    invalidateSavedReportDatesCache();
     return { success: true };
   } catch (error) {
     if (error instanceof Error && (error.message.includes('permission') || error.message.includes('insufficient'))) {
@@ -915,9 +917,25 @@ export async function runAutoCleanupExpiredRecords(maxAgeMs = TEN_MONTHS_MS): Pr
 }
 
 /**
- * List all saved report dates (optimized query with 10-month / 310-day limit)
+ * In-memory cache for saved report dates with 3-minute TTL to drastically reduce Firestore read quota
  */
-export async function getSavedReportDates(): Promise<{ activityDates: string[]; checklistDates: string[] }> {
+let cachedReportDates: { activityDates: string[]; checklistDates: string[] } | null = null;
+let cachedReportDatesTime = 0;
+const REPORT_DATES_CACHE_TTL = 3 * 60 * 1000; // 3 minutes
+
+export function invalidateSavedReportDatesCache(): void {
+  cachedReportDates = null;
+  cachedReportDatesTime = 0;
+}
+
+/**
+ * List all saved report dates (optimized query with 10-month / 310-day limit and 3-min read cache)
+ */
+export async function getSavedReportDates(forceRefresh = false): Promise<{ activityDates: string[]; checklistDates: string[] }> {
+  if (!forceRefresh && cachedReportDates && (Date.now() - cachedReportDatesTime < REPORT_DATES_CACHE_TTL)) {
+    return cachedReportDates;
+  }
+
   const activityDates: Set<string> = new Set();
   const checklistDates: Set<string> = new Set();
 
@@ -929,10 +947,12 @@ export async function getSavedReportDates(): Promise<{ activityDates: string[]; 
         limit(310)
       );
       const actSnap = await getDocs(actQuery);
+      recordFirebaseRead(actSnap.size, 'Indeks Tanggal Activity');
       actSnap.forEach((d) => activityDates.add(d.id));
     } catch {
       try {
         const actSnap = await getDocs(collection(db, COLLECTION_ACTIVITIES));
+        recordFirebaseRead(actSnap.size, 'Indeks Tanggal Activity (Fallback)');
         actSnap.forEach((d) => activityDates.add(d.id));
       } catch (err) {
         console.warn('Could not query activities from Firestore:', err);
@@ -946,10 +966,12 @@ export async function getSavedReportDates(): Promise<{ activityDates: string[]; 
         limit(310)
       );
       const checkSnap = await getDocs(checkQuery);
+      recordFirebaseRead(checkSnap.size, 'Indeks Tanggal Checklist');
       checkSnap.forEach((d) => checklistDates.add(d.id));
     } catch {
       try {
         const checkSnap = await getDocs(collection(db, COLLECTION_CHECKLISTS));
+        recordFirebaseRead(checkSnap.size, 'Indeks Tanggal Checklist (Fallback)');
         checkSnap.forEach((d) => checklistDates.add(d.id));
       } catch (err) {
         console.warn('Could not query checklists from Firestore:', err);
@@ -967,10 +989,14 @@ export async function getSavedReportDates(): Promise<{ activityDates: string[]; 
     }
   }
 
-  return {
+  const result = {
     activityDates: Array.from(activityDates).sort().reverse(),
     checklistDates: Array.from(checklistDates).sort().reverse(),
   };
+
+  cachedReportDates = result;
+  cachedReportDatesTime = Date.now();
+  return result;
 }
 
 /**

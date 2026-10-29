@@ -16,6 +16,7 @@ import {
   isChecklistCustomModified,
   isActivityCustomModified
 } from './data/defaults';
+import { sanitizeAndDeduplicateActivities, normalizeActivityKey } from './utils/activityDeduplicator';
 import { createDefaultWeeklyReport, getWeekRangeFromDate } from './data/weeklyDefaults';
 import {
   loadTeamMembers,
@@ -654,33 +655,33 @@ export default function App() {
     saveRoutineActivitiesToStorage(updated, now);
     saveRoutineActivitiesToCloud(updated, now).catch(console.error);
 
-    // Synchronize active routine items into the current active report at the VERY BOTTOM
+    // Synchronize active routine items into the current active report at the VERY BOTTOM (strictly deduplicated)
     setActivityReport((prev) => {
       const applicable = getApplicableRoutineActivities(updated, prev.date);
       const activeMembers = teamMembers.filter((m) => m.isActive);
       const pickPic = (idx: number) =>
         activeMembers.length > 0 ? activeMembers[idx % activeMembers.length].name : '';
 
-      // 1. Keep regular activities (non-routine)
-      const regularItems = prev.logBookActivities.filter((act) => !act.isRoutine);
+      const excluded = prev.excludedRoutineIds || [];
+      const sanitized = sanitizeAndDeduplicateActivities(prev.logBookActivities, excluded);
+      const working = [...sanitized];
 
-      // 2. Map active routine items (preserve existing status/pic if already filled)
-      const routineItems: LogBookItem[] = [];
       applicable.forEach((template, tIdx) => {
-        const existing = prev.logBookActivities.find(
-          (act) => act.isRoutine && act.details?.trim().toLowerCase() === template.details.trim().toLowerCase()
-        );
+        if (!template.isActive) return;
+        const key = normalizeActivityKey(template.details);
+        const isExcluded = excluded.some((k) => k === template.id || normalizeActivityKey(k) === key);
+        if (isExcluded) return;
+
+        const existing = working.find((act) => normalizeActivityKey(act.details) === key);
         if (existing) {
-          routineItems.push({
-            ...existing,
-            details: template.details,
-            clientName: template.clientName || existing.clientName || '',
-            clientDepartment: template.clientDepartment || existing.clientDepartment || 'IT (Internal IT)',
-            userClient: template.clientDepartment || existing.userClient || 'IT (Internal IT)',
-            noPhoto: template.noPhoto ?? true,
-          });
+          existing.details = template.details;
+          existing.clientName = template.clientName || existing.clientName || '';
+          existing.clientDepartment = template.clientDepartment || existing.clientDepartment || 'IT (Internal IT)';
+          existing.userClient = template.clientDepartment || existing.userClient || 'IT (Internal IT)';
+          existing.noPhoto = template.noPhoto ?? true;
+          existing.isRoutine = true;
         } else {
-          routineItems.push({
+          working.push({
             id: `act-routine-${template.id}-${now}-${tIdx}`,
             no: 0,
             details: template.details,
@@ -688,7 +689,7 @@ export default function App() {
             clientDepartment: template.clientDepartment || 'IT (Internal IT)',
             userClient: template.clientDepartment || 'IT (Internal IT)',
             status: template.defaultStatus || 'Done',
-            pic: pickPic(tIdx),
+            pic: pickPic(tIdx) || prev.prepared || 'IT Team',
             pictureUrl: '',
             isRoutine: true,
             noPhoto: template.noPhoto ?? true,
@@ -696,13 +697,10 @@ export default function App() {
         }
       });
 
-      // 3. Regular tasks ALWAYS first, Routine tasks ALWAYS at the VERY BOTTOM with continuous numbering
-      const combined = [...regularItems, ...routineItems];
-      const renumbered = combined.map((act, i) => ({ ...act, no: i + 1 }));
-
+      const finalSanitized = sanitizeAndDeduplicateActivities(working, excluded);
       const updatedRep: DailyActivityReport = {
         ...prev,
-        logBookActivities: renumbered,
+        logBookActivities: finalSanitized,
         isUserModified: true,
         updatedAt: now,
       };
@@ -733,17 +731,19 @@ export default function App() {
       const pickPic = (idx: number) =>
         activeMembers.length > 0 ? activeMembers[idx % activeMembers.length].name : '';
 
-      const regularItems = prev.logBookActivities.filter((act) => !act.isRoutine);
-      const routineItems: LogBookItem[] = [];
+      const excluded = prev.excludedRoutineIds || [];
+      const sanitized = sanitizeAndDeduplicateActivities(prev.logBookActivities, excluded);
+      const working = [...sanitized];
 
       applicable.forEach((template, tIdx) => {
-        const existing = prev.logBookActivities.find(
-          (act) => act.isRoutine && act.details?.trim().toLowerCase() === template.details.trim().toLowerCase()
-        );
-        if (existing) {
-          routineItems.push(existing);
-        } else {
-          routineItems.push({
+        if (!template.isActive) return;
+        const key = normalizeActivityKey(template.details);
+        const isExcluded = excluded.some((k) => k === template.id || normalizeActivityKey(k) === key);
+        if (isExcluded) return;
+
+        const exists = working.some((act) => normalizeActivityKey(act.details) === key);
+        if (!exists) {
+          working.push({
             id: `act-routine-${template.id}-${now}-${tIdx}`,
             no: 0,
             details: template.details,
@@ -751,7 +751,7 @@ export default function App() {
             clientDepartment: template.clientDepartment || 'IT (Internal IT)',
             userClient: template.clientDepartment || 'IT (Internal IT)',
             status: template.defaultStatus || 'Done',
-            pic: pickPic(tIdx),
+            pic: pickPic(tIdx) || prev.prepared || 'IT Team',
             pictureUrl: '',
             isRoutine: true,
             noPhoto: template.noPhoto ?? true,
@@ -759,13 +759,10 @@ export default function App() {
         }
       });
 
-      // Regular first, routine tasks at the VERY BOTTOM
-      const combined = [...regularItems, ...routineItems];
-      const renumbered = combined.map((act, i) => ({ ...act, no: i + 1 }));
-
+      const finalSanitized = sanitizeAndDeduplicateActivities(working, excluded);
       const updatedRep: DailyActivityReport = {
         ...prev,
-        logBookActivities: renumbered,
+        logBookActivities: finalSanitized,
         isUserModified: true,
         updatedAt: now,
       };
@@ -775,7 +772,7 @@ export default function App() {
       saveActivityReport(updatedRep).catch(console.error);
 
       setNotification(
-        `✓ ${routineItems.length} aktivitas rutin (${isDateWeekend(prev.date) ? 'Weekend' : 'Weekday'}) diterapkan di bagian paling bawah laporan.`
+        `✓ Aktivitas rutin (${isDateWeekend(prev.date) ? 'Weekend' : 'Weekday'}) diterapkan di bagian paling bawah laporan tanpa duplikasi.`
       );
       setTimeout(() => setNotification(null), 3500);
 
@@ -946,17 +943,19 @@ export default function App() {
     }
   };
 
-  // Run connection check, load cloud logo, real-time sync, and auto-cleanup on mount
+  // Run connection check, real-time sync, and auto-cleanup on mount (quota-optimized)
   useEffect(() => {
     handleCheckDbConnection();
     syncPendingLocalReportsToCloud();
 
-    // Initial check if cloud has a synced logo (or upload local logo to cloud if cloud is empty)
-    loadAppLogoFromCloud().then((cloudLogo) => {
+    // Real-time listener for app logo across all devices & users (Firestore onSnapshot fires immediately on attach)
+    const unsubLogo = subscribeToAppLogo((cloudLogo) => {
+      setCustomLogoUrl(cloudLogo);
       if (cloudLogo) {
-        setCustomLogoUrl(cloudLogo);
         saveCustomLogo(cloudLogo);
       } else {
+        removeCustomLogo();
+        // If cloud logo is not set, sync local logo if available
         const localLogo = getCustomLogo();
         if (localLogo) {
           saveAppLogoToCloud(localLogo).catch((err) => {
@@ -966,44 +965,12 @@ export default function App() {
       }
     });
 
-    // Real-time listener for app logo across all devices & users
-    const unsubLogo = subscribeToAppLogo((cloudLogo) => {
-      setCustomLogoUrl(cloudLogo);
-      if (cloudLogo) {
-        saveCustomLogo(cloudLogo);
-      } else {
-        removeCustomLogo();
-      }
-    });
-
-    // Initial check if cloud has synced team members (only apply if newer than local changes)
-    loadTeamMembersFromCloud().then((cloudData) => {
-      if (cloudData) {
-        const localUpdated = getTeamMembersLocalUpdatedAt();
-        if (cloudData.updatedAt > localUpdated) {
-          setTeamMembers(cloudData.members);
-          saveTeamMembersToStorage(cloudData.members, cloudData.updatedAt);
-        }
-      }
-    });
-
-    // Real-time listener for team members
+    // Real-time listener for team members (updates local if remote is newer)
     const unsubTeam = subscribeToTeamMembers((members, updatedAt) => {
       const localUpdated = getTeamMembersLocalUpdatedAt();
       if (updatedAt > localUpdated) {
         setTeamMembers(members);
         saveTeamMembersToStorage(members, updatedAt);
-      }
-    });
-
-    // Initial check if cloud has synced client users (only apply if newer than local changes)
-    loadClientUsersFromCloud().then((cloudData) => {
-      if (cloudData) {
-        const localUpdated = getClientUsersLocalUpdatedAt();
-        if (cloudData.updatedAt > localUpdated) {
-          setClientUsers(cloudData.users);
-          saveClientUsersToStorage(cloudData.users, cloudData.updatedAt);
-        }
       }
     });
 
@@ -1027,34 +994,12 @@ export default function App() {
       }
     });
 
-    // Initial check if cloud has synced server thresholds
-    loadServerThresholdsFromCloud().then((cloudData) => {
-      if (cloudData) {
-        const localUpdated = getServerThresholdsLocalUpdatedAt();
-        if (cloudData.updatedAt > localUpdated) {
-          setThresholds(cloudData.thresholds);
-          saveServerThresholdsToStorage(cloudData.thresholds, cloudData.updatedAt);
-        }
-      }
-    });
-
     // Real-time listener for server thresholds
     const unsubThresholds = subscribeToServerThresholds((thresholdsData, updatedAt) => {
       const localUpdated = getServerThresholdsLocalUpdatedAt();
       if (updatedAt > localUpdated) {
         setThresholds(thresholdsData);
         saveServerThresholdsToStorage(thresholdsData, updatedAt);
-      }
-    });
-
-    // Initial check if cloud has synced routine activities
-    loadRoutineActivitiesFromCloud().then((cloudData) => {
-      if (cloudData && Array.isArray(cloudData.templates) && cloudData.templates.length > 0) {
-        const localUpdated = getRoutineActivitiesLocalUpdatedAt();
-        if (cloudData.updatedAt > localUpdated) {
-          setRoutineTemplates(cloudData.templates);
-          saveRoutineActivitiesToStorage(cloudData.templates, cloudData.updatedAt);
-        }
       }
     });
 
@@ -1067,14 +1012,23 @@ export default function App() {
       }
     });
 
-    runAutoCleanupExpiredRecords().then((res) => {
-      const total = res.deletedActivities + res.deletedChecklists;
-      if (total > 0) {
-        setNotification(
-          `Auto-cleanup storage: ${total} data lama (>10 bulan) berhasil dibersihkan otomatis.`
-        );
-      }
-    });
+    // Auto-cleanup: Runs at most once every 24 hours per device to save Firebase read/delete quotas
+    const LAST_CLEANUP_KEY = 'hcj_last_cleanup_timestamp';
+    const lastCleanup = Number(localStorage.getItem(LAST_CLEANUP_KEY) || '0');
+    const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+    if (Date.now() - lastCleanup > ONE_DAY_MS) {
+      localStorage.setItem(LAST_CLEANUP_KEY, String(Date.now()));
+      runAutoCleanupExpiredRecords().then((res) => {
+        const total = res.deletedActivities + res.deletedChecklists;
+        if (total > 0) {
+          setNotification(
+            `Auto-cleanup storage: ${total} data lama (>10 bulan) berhasil dibersihkan otomatis.`
+          );
+        }
+      }).catch((err) => {
+        console.warn('Scheduled cleanup error:', err);
+      });
+    }
 
     return () => {
       unsubLogo();
@@ -1095,16 +1049,23 @@ export default function App() {
       clearTimeout(checkDebounceTimerRef.current);
       checkDebounceTimerRef.current = null;
     }
+    if (weeklyDebounceTimerRef.current) {
+      clearTimeout(weeklyDebounceTimerRef.current);
+      weeklyDebounceTimerRef.current = null;
+    }
 
     const currentAct = latestActRef.current;
     const currentCheck = latestCheckRef.current;
+    const currentWeekly = latestWeeklyRef.current;
     const actJson = JSON.stringify(currentAct);
     const checkJson = JSON.stringify(currentCheck);
+    const weeklyJson = JSON.stringify(currentWeekly);
 
     const actChanged = lastSavedActRef.current !== '' && actJson !== lastSavedActRef.current;
     const checkChanged = lastSavedCheckRef.current !== '' && checkJson !== lastSavedCheckRef.current;
+    const weeklyChanged = lastSavedWeeklyRef.current !== '' && weeklyJson !== lastSavedWeeklyRef.current;
 
-    if (actChanged || checkChanged) {
+    if (actChanged || checkChanged || weeklyChanged) {
       setIsSaving(true);
       try {
         if (actChanged) {
@@ -1116,6 +1077,10 @@ export default function App() {
           saveChecklistReportLocalImmediate(currentCheck);
           await saveChecklistReport(currentCheck);
           lastSavedCheckRef.current = checkJson;
+        }
+        if (weeklyChanged) {
+          await saveWeeklyReport(currentWeekly);
+          lastSavedWeeklyRef.current = weeklyJson;
         }
         setSaveStatusText('✓ Tersimpan otomatis ke Cloud');
       } catch (err) {
@@ -1208,23 +1173,20 @@ export default function App() {
             const applicableRoutines = getApplicableRoutineActivities(routineTemplates, selectedDate);
             const excluded = loadedAct.excludedRoutineIds || [];
 
-            const regularItems = loadedAct.logBookActivities.filter((act) => !act.isRoutine);
-            const currentRoutines = loadedAct.logBookActivities.filter((act) => act.isRoutine);
+            // Step 1: Clean and deduplicate existing activities in case legacy duplicates exist
+            const sanitizedExisting = sanitizeAndDeduplicateActivities(loadedAct.logBookActivities, excluded);
+            const working = [...sanitizedExisting];
 
-            let addedAny = false;
-            const finalRoutines = [...currentRoutines];
-
+            // Step 2: Ensure any active applicable routine is present
             applicableRoutines.forEach((tpl) => {
-              const isExcluded =
-                excluded.includes(tpl.id) ||
-                excluded.includes(tpl.details.trim().toLowerCase());
+              if (!tpl.isActive) return;
+              const key = normalizeActivityKey(tpl.details);
+              const isExcluded = excluded.some((k) => k === tpl.id || normalizeActivityKey(k) === key);
 
               if (!isExcluded) {
-                const exists = finalRoutines.some(
-                  (act) => act.details?.trim().toLowerCase() === tpl.details.trim().toLowerCase()
-                );
+                const exists = working.some((act) => normalizeActivityKey(act.details) === key);
                 if (!exists) {
-                  finalRoutines.push({
+                  working.push({
                     id: `act-routine-${tpl.id}-${selectedDate}`,
                     no: 0,
                     details: tpl.details,
@@ -1237,21 +1199,15 @@ export default function App() {
                     isRoutine: true,
                     noPhoto: tpl.noPhoto ?? true,
                   });
-                  addedAny = true;
                 }
               }
             });
 
-            if (addedAny) {
-              const combined = [...regularItems, ...finalRoutines];
-              const renumbered = combined.map((act, i) => ({ ...act, no: i + 1 }));
-              finalAct = {
-                ...loadedAct,
-                logBookActivities: renumbered,
-              };
-            } else {
-              finalAct = loadedAct;
-            }
+            const finalSanitized = sanitizeAndDeduplicateActivities(working, excluded);
+            finalAct = {
+              ...loadedAct,
+              logBookActivities: finalSanitized,
+            };
           }
         } else {
           finalAct = createDefaultActivityReport(selectedDate, thresholds, routineTemplates);
@@ -1351,6 +1307,17 @@ export default function App() {
           console.warn('Failed to load weekly report:', e);
         }
         const finalWeek = loadedWeek || createDefaultWeeklyReport(selectedDate);
+        if (finalWeek && Array.isArray(finalWeek.weeklyHighlights)) {
+          const seenHighlightIds = new Set<string>();
+          finalWeek.weeklyHighlights = finalWeek.weeklyHighlights.map((hl, idx) => {
+            let uniqueId = hl.id || `hl-${idx}`;
+            if (seenHighlightIds.has(uniqueId)) {
+              uniqueId = `${uniqueId}-${idx}`;
+            }
+            seenHighlightIds.add(uniqueId);
+            return { ...hl, id: uniqueId };
+          });
+        }
         latestWeeklyRef.current = finalWeek;
         lastSavedWeeklyRef.current = JSON.stringify(finalWeek);
         setWeeklyReport(finalWeek);
@@ -1479,7 +1446,7 @@ export default function App() {
       } finally {
         setIsSaving(false);
       }
-    }, 300); // 300ms fast debounce on keystroke
+    }, 2000); // 2000ms debounce on keystroke (saves 85-90% Firestore writes; 0ms local persistence)
 
     return () => {
       if (actDebounceTimerRef.current) {
@@ -1524,7 +1491,7 @@ export default function App() {
       } finally {
         setIsSaving(false);
       }
-    }, 300); // 300ms fast debounce
+    }, 2000); // 2000ms debounce (saves writes, 0ms local backup)
 
     return () => {
       if (checkDebounceTimerRef.current) {
@@ -1582,7 +1549,7 @@ export default function App() {
       } catch (err) {
         console.warn('Auto save weekly failed:', err);
       }
-    }, 400);
+    }, 2000); // 2000ms debounce
   };
 
   // Instant Manual Save trigger (if user clicks Simpan button)

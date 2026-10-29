@@ -179,8 +179,14 @@ export function createDefaultActivityReport(
     });
   }
 
-  // 2. Applicable routine list activities placed at the VERY BOTTOM with numbering continuing sequentially
+  // 2. Applicable routine list activities placed at the VERY BOTTOM with numbering continuing sequentially (strictly deduplicated)
+  const seenTemplateKeys = new Set<string>();
   applicableRoutines.forEach((routine) => {
+    if (!routine.isActive) return;
+    const key = routine.details.trim().toLowerCase();
+    if (seenTemplateKeys.has(key)) return;
+    seenTemplateKeys.add(key);
+
     const currentNo = initialActivities.length + 1;
     initialActivities.push({
       id: `act-routine-${routine.id}-${date}`,

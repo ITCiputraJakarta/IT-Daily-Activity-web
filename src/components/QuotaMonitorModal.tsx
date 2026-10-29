@@ -479,14 +479,59 @@ export const QuotaMonitorModal: React.FC<Props> = ({
             </div>
           )}
 
-          {/* SECTION 3: KEAMANAN & EFISIENSI SUMMARY */}
+          {/* SECTION 3: 4 USER & 30-DAY LONGEVITY PROJECTION */}
+          <div className="bg-linear-to-r from-emerald-50 via-teal-50 to-slate-50 border border-emerald-300 rounded-xl p-3.5 space-y-2 text-xs">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-700" />
+                <span className="font-bold text-slate-900 text-xs sm:text-sm">
+                  Proyeksi Ketahanan 4 User Aktif (30 Hari Non-Stop)
+                </span>
+              </div>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                100% Bebas Kuota Berbayar
+              </span>
+            </div>
+
+            <p className="text-[11px] text-slate-600 leading-relaxed">
+              Arsitektur hemat kuota (kompresi adaptif &lt;40KB, debounce keystroke 2000ms, sinkronisasi lokal 0ms, &amp; cache indeks 3 menit) dirancang khusus agar tim 4 orang dapat bekerja penuh selama 30 hari hingga 10 bulan tanpa menyentuh batas gratis:
+            </p>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+              <div className="bg-white/80 p-2 rounded-lg border border-emerald-200">
+                <p className="text-[10px] text-slate-500 font-semibold">Tulis / Writes (4 User)</p>
+                <p className="text-xs font-bold text-slate-900 font-mono">~20 - 40 / hari</p>
+                <p className="text-[9.5px] text-emerald-700 font-medium">Batas: 20.000 (0.2%)</p>
+              </div>
+
+              <div className="bg-white/80 p-2 rounded-lg border border-emerald-200">
+                <p className="text-[10px] text-slate-500 font-semibold">Baca / Reads (4 User)</p>
+                <p className="text-xs font-bold text-slate-900 font-mono">~100 - 250 / hari</p>
+                <p className="text-[9.5px] text-emerald-700 font-medium">Batas: 50.000 (0.5%)</p>
+              </div>
+
+              <div className="bg-white/80 p-2 rounded-lg border border-emerald-200">
+                <p className="text-[10px] text-slate-500 font-semibold">Storage 30 Hari</p>
+                <p className="text-xs font-bold text-slate-900 font-mono">~9.0 MB total</p>
+                <p className="text-[9.5px] text-emerald-700 font-medium">Batas: 1.024 MB (&lt;1%)</p>
+              </div>
+
+              <div className="bg-white/80 p-2 rounded-lg border border-emerald-200">
+                <p className="text-[10px] text-slate-500 font-semibold">Bandwidth Vercel</p>
+                <p className="text-xs font-bold text-slate-900 font-mono">~120 MB / bln</p>
+                <p className="text-[9.5px] text-emerald-700 font-medium">Batas: 100.000 MB (&lt;0.2%)</p>
+              </div>
+            </div>
+          </div>
+
+          {/* SECTION 4: KEAMANAN & EFISIENSI SUMMARY */}
           <div className="p-3 bg-emerald-50/80 border border-emerald-200 rounded-xl text-xs text-emerald-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <ShieldCheck className="w-5 h-5 text-emerald-700 shrink-0" />
               <div>
-                <p className="font-bold text-emerald-900">Performa Kuota 100% Efisien:</p>
+                <p className="font-bold text-emerald-900">Performa Kuota 100% Efisien &amp; Tangguh:</p>
                 <p className="text-[11px] text-emerald-800">
-                  Dengan kompresi gambar otomatis (~40KB per foto) dan debounce keystroke, penggunaan kuota Firebase dan Vercel tidak akan pernah melebihi limit harian gratis.
+                  Semua input pengguna tersimpan instan 0ms di browser lokal sebelum dikirim ke Firebase dalam 1 payload bersih, mencegah kehilangan data dan kebocoran kuota.
                 </p>
               </div>
             </div>

@@ -1,5 +1,6 @@
 import { WeeklyReport, WeeklyHighlightItem, DailyActivityReport } from '../types';
 import { loadActivityReport } from '../services/firebase';
+import { sanitizeAndDeduplicateActivities } from '../utils/activityDeduplicator';
 
 const MONTH_NAMES_EN = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -371,12 +372,19 @@ export async function pullHighlightsFromDailyActivities(
 ): Promise<{ items: WeeklyHighlightItem[]; daysChecked: number; totalFound: number }> {
   const dates = getDatesBetween(startDateStr, endDateStr);
   const collectedHighlights: WeeklyHighlightItem[] = [];
+  const seenIds = new Set<string>();
 
   for (const d of dates) {
     try {
       const dailyReport = await loadActivityReport(d);
       if (dailyReport && dailyReport.logBookActivities) {
-        dailyReport.logBookActivities.forEach((act) => {
+        // Sanitize and deduplicate routine and logbook activities first
+        const cleanActs = sanitizeAndDeduplicateActivities(
+          dailyReport.logBookActivities,
+          dailyReport.excludedRoutineIds || []
+        );
+
+        cleanActs.forEach((act, actIdx) => {
           if (act && typeof act.details === 'string' && act.details.trim() !== '') {
             let label = act.details.trim();
             if (includeDeptInfo) {
@@ -388,8 +396,18 @@ export async function pullHighlightsFromDailyActivities(
                 label = `${label} (${metaParts.join(' - ')})`;
               }
             }
+
+            // Guaranteed unique ID per item to prevent duplicate React keys
+            const rawKey = act.id ? String(act.id).replace(/[^a-zA-Z0-9_-]/g, '_') : `act-${actIdx}`;
+            let uniqueId = `hl-${d}-${rawKey}-${actIdx}`;
+            let suffix = 1;
+            while (seenIds.has(uniqueId)) {
+              uniqueId = `hl-${d}-${rawKey}-${actIdx}-${suffix++}`;
+            }
+            seenIds.add(uniqueId);
+
             collectedHighlights.push({
-              id: `hl-${d}-${act.id || act.no || Math.random().toString(36).substring(7)}`,
+              id: uniqueId,
               no: collectedHighlights.length + 1,
               text: label,
               sourceDate: d,

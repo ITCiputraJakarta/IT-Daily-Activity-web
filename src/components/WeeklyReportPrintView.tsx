@@ -92,7 +92,7 @@ export const WeeklyReportPrintView: React.FC<Props> = ({
       <div
         ref={pageRefs[0]}
         id="weekly-page-1"
-        className="a4-page-container bg-white text-slate-950 shadow-xl rounded-none w-[210mm] min-h-[297mm] p-[10mm_14mm] box-border text-[11px] leading-tight font-sans relative flex flex-col justify-between"
+        className="a4-page-container bg-white text-slate-950 shadow-xl rounded-none w-[210mm] min-h-[297mm] max-h-[297mm] h-[297mm] p-[10mm_14mm] box-border text-[11px] leading-tight font-sans relative flex flex-col justify-between overflow-hidden"
       >
         <div>
           <PageHeader showMetadata={true} />
@@ -104,12 +104,12 @@ export const WeeklyReportPrintView: React.FC<Props> = ({
               <div className="text-[10.5px] font-semibold text-slate-900 mb-1">
                 Weekly Internet Traffic Statistic:
               </div>
-              <div className="flex justify-center items-center bg-slate-50 border border-slate-300 rounded mb-2 overflow-hidden min-h-[150px] max-h-[170px]">
+              <div className="flex justify-center items-center bg-slate-50 border border-slate-300 rounded mb-2 overflow-hidden h-[155px] max-h-[160px] p-1">
                 {report.guestStatistic?.mrtgScreenshotUrl ? (
                   <img
                     src={report.guestStatistic.mrtgScreenshotUrl}
                     alt="Weekly Internet Traffic Statistic"
-                    className="w-auto max-w-full max-h-[165px] object-contain block mx-auto"
+                    className="w-auto h-auto max-w-full max-h-full object-contain block mx-auto"
                   />
                 ) : (
                   <div className="text-slate-400 italic text-[11px] py-10 text-center">
@@ -140,7 +140,7 @@ export const WeeklyReportPrintView: React.FC<Props> = ({
             <div className="border border-slate-900 p-2.5 bg-white text-[10.5px]">
               <ol className="space-y-1 pl-1 list-none">
                 {highlightsPage1.map((item, idx) => (
-                  <li key={item.id || idx} className="flex items-start gap-1.5 leading-snug">
+                  <li key={item.id ? `${item.id}-p1-${idx}` : `hl-p1-${idx}`} className="flex items-start gap-1.5 leading-snug">
                     <span className="font-bold w-5 shrink-0 text-right">{idx + 1}.</span>
                     <span className="font-medium text-slate-900">{item.text}</span>
                   </li>
@@ -162,13 +162,13 @@ export const WeeklyReportPrintView: React.FC<Props> = ({
       <div
         ref={pageRefs[1]}
         id="weekly-page-2"
-        className="a4-page-container bg-white text-slate-950 shadow-xl rounded-none w-[210mm] min-h-[297mm] p-[10mm_14mm] box-border text-[11px] leading-tight font-sans relative flex flex-col justify-between page-break"
+        className="a4-page-container bg-white text-slate-950 shadow-xl rounded-none w-[210mm] min-h-[297mm] max-h-[297mm] h-[297mm] p-[10mm_14mm] box-border text-[11px] leading-tight font-sans relative flex flex-col justify-between overflow-hidden page-break"
       >
         <div>
           <div className="border border-slate-900 p-2.5 bg-white text-[10.5px] mb-3">
             <ol className="space-y-1 pl-1 list-none">
               {highlightsPage2.map((item, idx) => (
-                <li key={item.id || idx} className="flex items-start gap-1.5 leading-snug">
+                <li key={item.id ? `${item.id}-p2-${idx}` : `hl-p2-${idx}`} className="flex items-start gap-1.5 leading-snug">
                   <span className="font-bold w-6 shrink-0 text-right">{12 + idx}.</span>
                   <span className="font-medium text-slate-900">{item.text}</span>
                 </li>
@@ -184,15 +184,15 @@ export const WeeklyReportPrintView: React.FC<Props> = ({
               </span>
             </div>
 
-            <div className="border border-slate-900 p-2 bg-white space-y-2.5">
+            <div className="border border-slate-900 p-2 bg-white grid grid-cols-2 gap-2.5">
               <div>
                 <div className="text-[11px] font-bold text-slate-900 mb-0.5">Status Overview</div>
-                <div className="flex justify-center items-center bg-slate-50 border border-slate-300 rounded overflow-hidden min-h-[140px] max-h-[160px]">
+                <div className="flex justify-center items-center bg-slate-50 border border-slate-300 rounded overflow-hidden h-[150px] max-h-[155px] p-1">
                   {report.antivirusReport?.statusOverviewUrl ? (
                     <img
                       src={report.antivirusReport.statusOverviewUrl}
                       alt="Status Overview"
-                      className="w-auto max-w-full max-h-[155px] object-contain block mx-auto"
+                      className="w-auto h-auto max-w-full max-h-full object-contain block mx-auto"
                     />
                   ) : (
                     <div className="text-slate-400 italic text-[11px] py-8">- Screenshot Status Overview Antivirus -</div>
@@ -202,12 +202,12 @@ export const WeeklyReportPrintView: React.FC<Props> = ({
 
               <div>
                 <div className="text-[11px] font-bold text-slate-900 mb-0.5">Security Overview</div>
-                <div className="flex justify-center items-center bg-slate-50 border border-slate-300 rounded overflow-hidden min-h-[140px] max-h-[160px]">
+                <div className="flex justify-center items-center bg-slate-50 border border-slate-300 rounded overflow-hidden h-[150px] max-h-[155px] p-1">
                   {report.antivirusReport?.securityOverviewUrl ? (
                     <img
                       src={report.antivirusReport.securityOverviewUrl}
                       alt="Security Overview"
-                      className="w-auto max-w-full max-h-[155px] object-contain block mx-auto"
+                      className="w-auto h-auto max-w-full max-h-full object-contain block mx-auto"
                     />
                   ) : (
                     <div className="text-slate-400 italic text-[11px] py-8">- Screenshot Security Overview Antivirus -</div>
@@ -227,17 +227,17 @@ export const WeeklyReportPrintView: React.FC<Props> = ({
       <div
         ref={pageRefs[2]}
         id="weekly-page-3"
-        className="a4-page-container bg-white text-slate-950 shadow-xl rounded-none w-[210mm] min-h-[297mm] p-[10mm_14mm] box-border text-[11px] leading-tight font-sans relative flex flex-col justify-between page-break"
+        className="a4-page-container bg-white text-slate-950 shadow-xl rounded-none w-[210mm] min-h-[297mm] max-h-[297mm] h-[297mm] p-[10mm_14mm] box-border text-[11px] leading-tight font-sans relative flex flex-col justify-between overflow-hidden page-break"
       >
         <div className="space-y-2.5">
           <div>
             <div className="text-[11px] font-bold text-slate-900 mb-0.5">Computer Status</div>
-            <div className="flex justify-center items-center bg-slate-50 border border-slate-900 p-1 rounded overflow-hidden min-h-[200px] max-h-[225px]">
+            <div className="flex justify-center items-center bg-slate-50 border border-slate-900 p-1 rounded overflow-hidden h-[185px] max-h-[190px]">
               {report.antivirusReport?.computerStatusUrl ? (
                 <img
                   src={report.antivirusReport.computerStatusUrl}
                   alt="Computer Status"
-                  className="w-auto max-w-full max-h-[220px] object-contain block mx-auto"
+                  className="w-auto h-auto max-w-full max-h-full object-contain block mx-auto"
                 />
               ) : (
                 <div className="text-slate-400 italic text-[11px] py-12">- Screenshot Computer Status -</div>
@@ -247,12 +247,12 @@ export const WeeklyReportPrintView: React.FC<Props> = ({
 
           <div>
             <div className="text-[11px] font-bold text-slate-900 mb-0.5">Antivirus Detection</div>
-            <div className="flex justify-center items-center bg-slate-50 border border-slate-900 p-1 rounded overflow-hidden min-h-[200px] max-h-[225px]">
+            <div className="flex justify-center items-center bg-slate-50 border border-slate-900 p-1 rounded overflow-hidden h-[185px] max-h-[190px]">
               {report.antivirusReport?.antivirusDetectionUrl ? (
                 <img
                   src={report.antivirusReport.antivirusDetectionUrl}
                   alt="Antivirus Detection"
-                  className="w-auto max-w-full max-h-[220px] object-contain block mx-auto"
+                  className="w-auto h-auto max-w-full max-h-full object-contain block mx-auto"
                 />
               ) : (
                 <div className="text-slate-400 italic text-[11px] py-12">- Screenshot Antivirus Detection -</div>
@@ -262,12 +262,12 @@ export const WeeklyReportPrintView: React.FC<Props> = ({
 
           <div>
             <div className="text-[11px] font-bold text-slate-900 mb-0.5">Firewall Detections</div>
-            <div className="flex justify-center items-center bg-slate-50 border border-slate-900 p-1 rounded overflow-hidden min-h-[200px] max-h-[225px]">
+            <div className="flex justify-center items-center bg-slate-50 border border-slate-900 p-1 rounded overflow-hidden h-[185px] max-h-[190px]">
               {report.antivirusReport?.firewallDetectionsUrl ? (
                 <img
                   src={report.antivirusReport.firewallDetectionsUrl}
                   alt="Firewall Detections"
-                  className="w-auto max-w-full max-h-[220px] object-contain block mx-auto"
+                  className="w-auto h-auto max-w-full max-h-full object-contain block mx-auto"
                 />
               ) : (
                 <div className="text-slate-400 italic text-[11px] py-12">- Screenshot Firewall Detections -</div>
@@ -285,16 +285,16 @@ export const WeeklyReportPrintView: React.FC<Props> = ({
       <div
         ref={pageRefs[3]}
         id="weekly-page-4"
-        className="a4-page-container bg-white text-slate-950 shadow-xl rounded-none w-[210mm] min-h-[297mm] p-[10mm_14mm] box-border text-[11px] leading-tight font-sans relative flex flex-col justify-between page-break"
+        className="a4-page-container bg-white text-slate-950 shadow-xl rounded-none w-[210mm] min-h-[297mm] max-h-[297mm] h-[297mm] p-[10mm_14mm] box-border text-[11px] leading-tight font-sans relative flex flex-col justify-between overflow-hidden page-break"
       >
         <div>
           <div className="text-[11px] font-bold text-slate-900 mb-2">Fortigate Status:</div>
-          <div className="border border-slate-900 p-2 bg-white flex justify-center items-center min-h-[700px] max-h-[750px] overflow-hidden">
+          <div className="border border-slate-900 p-2 bg-white flex justify-center items-center h-[690px] max-h-[700px] overflow-hidden">
             {report.antivirusReport?.fortigateStatusUrl ? (
               <img
                 src={report.antivirusReport.fortigateStatusUrl}
                 alt="Fortigate Status"
-                className="w-auto max-w-full max-h-[730px] object-contain block mx-auto"
+                className="w-auto h-auto max-w-full max-h-full object-contain block mx-auto"
               />
             ) : (
               <div className="text-slate-400 italic text-[12px] py-32 text-center">
@@ -313,7 +313,7 @@ export const WeeklyReportPrintView: React.FC<Props> = ({
       <div
         ref={pageRefs[4]}
         id="weekly-page-5"
-        className="a4-page-container bg-white text-slate-950 shadow-xl rounded-none w-[210mm] min-h-[297mm] p-[10mm_14mm] box-border text-[10.5px] leading-tight font-sans relative flex flex-col justify-between page-break"
+        className="a4-page-container bg-white text-slate-950 shadow-xl rounded-none w-[210mm] min-h-[297mm] max-h-[297mm] h-[297mm] p-[10mm_14mm] box-border text-[10.5px] leading-tight font-sans relative flex flex-col justify-between overflow-hidden page-break"
       >
         <div className="space-y-3">
           {/* 4. Next Month Project & On Going */}
@@ -372,7 +372,7 @@ export const WeeklyReportPrintView: React.FC<Props> = ({
                             <img
                               src={tr.documentationUrl}
                               alt={`Dokumentasi Training ${idx + 1}`}
-                              className="w-auto max-w-full max-h-24 object-contain rounded border border-slate-300 block"
+                              className="w-auto h-auto max-w-full max-h-16 object-contain rounded border border-slate-300 block"
                             />
                           ) : (
                             <div className="text-[10px] text-slate-400 italic">
@@ -530,7 +530,7 @@ export const WeeklyReportPrintView: React.FC<Props> = ({
       <div
         ref={pageRefs[5]}
         id="weekly-page-6"
-        className="a4-page-container bg-white text-slate-950 shadow-xl rounded-none w-[210mm] min-h-[297mm] p-[10mm_14mm] box-border text-[10.5px] leading-tight font-sans relative flex flex-col justify-between page-break"
+        className="a4-page-container bg-white text-slate-950 shadow-xl rounded-none w-[210mm] min-h-[297mm] max-h-[297mm] h-[297mm] p-[10mm_14mm] box-border text-[10.5px] leading-tight font-sans relative flex flex-col justify-between overflow-hidden page-break"
       >
         <div className="space-y-3">
           {/* Total AP on HCJ Summary */}
@@ -709,19 +709,19 @@ export const WeeklyReportPrintView: React.FC<Props> = ({
       <div
         ref={pageRefs[6]}
         id="weekly-page-7"
-        className="a4-page-container bg-white text-slate-950 shadow-xl rounded-none w-[210mm] min-h-[297mm] p-[10mm_14mm] box-border text-[11px] leading-tight font-sans relative flex flex-col justify-between page-break"
+        className="a4-page-container bg-white text-slate-950 shadow-xl rounded-none w-[210mm] min-h-[297mm] max-h-[297mm] h-[297mm] p-[10mm_14mm] box-border text-[11px] leading-tight font-sans relative flex flex-col justify-between overflow-hidden page-break"
       >
         <div>
           {/* 12. Sara System Report IT Section */}
           <div className="mb-4">
             <h4 className="font-bold text-slate-950 mb-1.5">12. Sara System Report IT Section</h4>
             <div className="border border-slate-900 p-2 bg-white">
-              <div className="flex justify-center items-center bg-slate-50 border border-slate-300 rounded mb-2 overflow-hidden min-h-[220px] max-h-[270px]">
+              <div className="flex justify-center items-center bg-slate-50 border border-slate-300 rounded mb-2 overflow-hidden h-[215px] max-h-[225px] p-1">
                 {report.saraSystemReport?.screenshotUrl ? (
                   <img
                     src={report.saraSystemReport.screenshotUrl}
                     alt="SARA System Report IT Section"
-                    className="w-auto max-w-full max-h-[260px] object-contain block mx-auto"
+                    className="w-auto h-auto max-w-full max-h-full object-contain block mx-auto"
                   />
                 ) : (
                   <div className="text-slate-400 italic text-[11px] py-16 text-center">
